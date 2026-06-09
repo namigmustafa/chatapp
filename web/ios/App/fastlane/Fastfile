@@ -37,6 +37,16 @@ platform :ios do
       cert_id: "YB52DSFB37",
     )
 
+    require 'xcodeproj'
+    xcode_project = Xcodeproj::Project.open('App.xcodeproj')
+    app_target = xcode_project.targets.find { |t| t.name == 'App' }
+    app_group = xcode_project.main_group.find_subpath('App', false)
+    unless app_group.files.any? { |f| f.path == 'GoogleService-Info.plist' }
+      file_ref = app_group.new_file('GoogleService-Info.plist')
+      app_target.add_file_references([file_ref])
+      xcode_project.save
+    end
+
     update_code_signing_settings(
       use_automatic_signing: false,
       path: "App.xcodeproj",
