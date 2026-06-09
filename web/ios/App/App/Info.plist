@@ -53,5 +53,7 @@
 	<string>Sesli ve video aramalar için mikrofonunuza erişmemiz gerekiyor.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Fotoğraf ve video paylaşmak için fotoğraf kitaplığınıza erişmemiz gerekiyor.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
