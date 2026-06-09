@@ -32,7 +32,7 @@ platform :ios do
       app_identifier: "app.chatapp.p2p",
       skip_certificate_verification: true,
       force: true,
-      include_all_certificates: true,
+      cert_id: "YB52DSFB37",
     )
 
     build_app(
