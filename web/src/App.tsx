@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { onAuthChange, handleGoogleRedirect } from '@/services/auth'
 import { useAuthStore } from '@/store/authStore'
 import { useFileTransferReceiver } from '@/hooks/useFileTransferReceiver'
@@ -37,7 +37,7 @@ export default function App() {
   }, [setUser])
 
   return (
-    <BrowserRouter>
+    <HashRouter>
       <AppInner />
       <Routes>
         <Route
@@ -58,6 +58,6 @@ export default function App() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   )
 }
