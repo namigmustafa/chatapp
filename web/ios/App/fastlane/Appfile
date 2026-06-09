@@ -1,0 +1,2 @@
+app_identifier("app.chatapp.p2p")
+team_id(ENV["APPLE_TEAM_ID"])
