@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
 import { onAuthChange, handleGoogleRedirect } from '@/services/auth'
 import { useAuthStore } from '@/store/authStore'
 import { useFileTransferReceiver } from '@/hooks/useFileTransferReceiver'
@@ -31,9 +32,25 @@ export default function App() {
   const { setUser } = useAuthStore()
 
   useEffect(() => {
-    handleGoogleRedirect().catch(() => {})
-    const unsub = onAuthChange(setUser)
-    return unsub
+    // getRedirectResult hangs in Capacitor WebView — skip on native
+    if (!Capacitor.isNativePlatform()) {
+      handleGoogleRedirect().catch(() => {})
+    }
+
+    // Fallback: if Firebase auth doesn't respond in 5s, stop loading
+    const timeout = setTimeout(() => {
+      useAuthStore.getState().setLoading(false)
+    }, 5000)
+
+    const unsub = onAuthChange((user) => {
+      clearTimeout(timeout)
+      setUser(user)
+    })
+
+    return () => {
+      clearTimeout(timeout)
+      unsub()
+    }
   }, [setUser])
 
   return (
