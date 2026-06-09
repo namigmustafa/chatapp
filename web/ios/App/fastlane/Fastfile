@@ -22,7 +22,7 @@ platform :ios do
 
     get_certificates(
       api_key: api_key,
-      keychain_name: keychain_name,
+      keychain_path: "~/Library/Keychains/#{keychain_name}-db",
       keychain_password: keychain_password,
     )
 
