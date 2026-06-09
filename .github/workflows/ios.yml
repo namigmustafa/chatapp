@@ -44,6 +44,13 @@ jobs:
           mkdir -p ~/.private_keys
           echo "${{ secrets.ASC_PRIVATE_KEY }}" > ~/.private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
 
+      - name: Select latest Xcode
+        run: |
+          LATEST=$(ls /Applications/ | grep '^Xcode_' | sort -t_ -k2 -V | tail -1)
+          echo "Selecting Xcode: $LATEST"
+          sudo xcode-select -s "/Applications/$LATEST"
+          xcodebuild -version
+
       - name: Decode distribution certificate
         working-directory: web/ios/App
         run: echo "${{ secrets.DIST_CERT_P12_BASE64 }}" | base64 --decode > distribution.p12
