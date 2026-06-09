@@ -2,7 +2,17 @@ default_platform(:ios)
 
 platform :ios do
   lane :beta do
-    setup_ci
+    keychain_name = "build.keychain"
+    keychain_password = "ci_temp_password"
+
+    create_keychain(
+      name: keychain_name,
+      password: keychain_password,
+      default_keychain: true,
+      unlock: true,
+      timeout: 3600,
+      add_to_search_list: true,
+    )
 
     api_key = app_store_connect_api_key(
       key_id: ENV["ASC_KEY_ID"],
@@ -10,7 +20,11 @@ platform :ios do
       key_content: ENV["ASC_PRIVATE_KEY"],
     )
 
-    get_certificates(api_key: api_key)
+    get_certificates(
+      api_key: api_key,
+      keychain_name: keychain_name,
+      keychain_password: keychain_password,
+    )
 
     get_provisioning_profile(
       api_key: api_key,
