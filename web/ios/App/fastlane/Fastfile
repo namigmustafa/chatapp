@@ -38,7 +38,7 @@ platform :ios do
     )
 
     require 'xcodeproj'
-    xcode_project = Xcodeproj::Project.open('App.xcodeproj')
+    xcode_project = Xcodeproj::Project.open('../App.xcodeproj')
     app_target = xcode_project.targets.find { |t| t.name == 'App' }
     app_group = xcode_project.main_group.find_subpath('App', false)
     unless app_group.files.any? { |f| f.path == 'GoogleService-Info.plist' }
