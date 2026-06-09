@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { signInWithEmail, signInWithGoogle } from '@/services/auth'
+import { signInWithCredential, EmailAuthProvider } from 'firebase/auth'
+import { auth } from '@/services/firebase'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 
@@ -40,12 +42,29 @@ export default function LoginPage() {
   }
 
   const handleNetworkTest = async () => {
-    setError('Test ediliyor...')
+    setError('POST test ediliyor...')
     try {
-      const res = await fetch('https://identitytoolkit.googleapis.com/')
-      setError(`OK: ${res.status} ${res.statusText}`)
+      const apiKey = import.meta.env.VITE_FIREBASE_API_KEY
+      const res = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, returnSecureToken: true }),
+        }
+      )
+      const data = await res.json()
+      if (!res.ok) {
+        setError(`POST OK (hata): ${JSON.stringify(data.error)}`)
+        return
+      }
+      // POST worked! Now sign in with credential
+      setError('POST çalıştı, credential ile giriş...')
+      const credential = EmailAuthProvider.credential(email, password)
+      await signInWithCredential(auth, credential)
+      navigate('/')
     } catch (err: any) {
-      setError(`FETCH HATA: ${err.message} | ${err.name}`)
+      setError(`POST HATA: ${err.message}`)
     }
   }
 
@@ -103,7 +122,7 @@ export default function LoginPage() {
         </Button>
 
         <button type="button" onClick={handleNetworkTest} className="w-full text-xs text-zinc-500 underline mt-1">
-          Ağ Testi
+          POST Test + Direkt Giriş
         </button>
 
         <p className="text-center text-sm text-zinc-500 mt-2">
