@@ -16,7 +16,10 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      await signInWithEmail(email, password)
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('TIMEOUT — 15sn cevap yok')), 15000)
+      )
+      await Promise.race([signInWithEmail(email, password), timeout])
       navigate('/')
     } catch (err: any) {
       const detail = JSON.stringify({ message: err.message, code: err.code, name: err.name }, null, 2)
