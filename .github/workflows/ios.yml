@@ -44,6 +44,10 @@ jobs:
           mkdir -p ~/.private_keys
           echo "${{ secrets.ASC_PRIVATE_KEY }}" > ~/.private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
 
+      - name: Decode distribution certificate
+        working-directory: web/ios/App
+        run: echo "${{ secrets.DIST_CERT_P12_BASE64 }}" | base64 --decode > distribution.p12
+
       - name: Build & Upload to TestFlight
         working-directory: web/ios/App
         env:
@@ -51,4 +55,5 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          DIST_CERT_PASSWORD: ${{ secrets.DIST_CERT_PASSWORD }}
         run: bundle exec fastlane beta
