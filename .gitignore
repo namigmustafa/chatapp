@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+web/node_modules/
+
+# Build output
+web/dist/
+
+# Android build artifacts (keep source, ignore generated)
+web/android/.gradle/
+web/android/build/
+web/android/app/build/
+web/android/app/src/main/assets/public/
+web/android/local.properties
+
+# iOS build artifacts (keep source, ignore generated)
+web/ios/App/Pods/
+web/ios/App/App/public/
+web/ios/App/.xcode.env.local
+web/ios/DerivedData/
+
+# Firebase
+.firebase/
+firebase-debug.log
+
+# Env
+.env
+.env.local
+*.local
+
+# OS
+.DS_Store
+Thumbs.db
