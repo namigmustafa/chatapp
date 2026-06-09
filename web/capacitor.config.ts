@@ -9,11 +9,6 @@ const config: CapacitorConfig = {
     iosScheme: 'https',
     hostname: 'localhost',
   },
-  plugins: {
-    CapacitorHttp: {
-      enabled: true,
-    },
-  },
 }
 
 export default config
