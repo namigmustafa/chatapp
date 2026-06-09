@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth'
+import { getAuth, setPersistence, browserLocalPersistence, inMemoryPersistence } from 'firebase/auth'
+import { Capacitor } from '@capacitor/core'
 import { getFirestore } from 'firebase/firestore'
 import { getDatabase } from 'firebase/database'
 import { getMessaging, isSupported } from 'firebase/messaging'
@@ -19,7 +20,7 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
-setPersistence(auth, browserLocalPersistence).catch(() => {})
+setPersistence(auth, Capacitor.isNativePlatform() ? inMemoryPersistence : browserLocalPersistence).catch(() => {})
 export const db = getFirestore(app)
 export const rtdb = getDatabase(app)
 export const storage = getStorage(app)
