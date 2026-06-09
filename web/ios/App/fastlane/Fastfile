@@ -31,6 +31,8 @@ platform :ios do
       api_key: api_key,
       app_identifier: "app.chatapp.p2p",
       skip_certificate_verification: true,
+      force: true,
+      include_all_certificates: true,
     )
 
     build_app(
