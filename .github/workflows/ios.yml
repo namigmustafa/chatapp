@@ -58,6 +58,9 @@ jobs:
           sudo xcode-select -s "/Applications/$LATEST"
           xcodebuild -version
 
+      - name: Decode GoogleService-Info.plist
+        run: echo "${{ secrets.GOOGLESERVICE_INFO_PLIST }}" | base64 --decode > web/ios/App/App/GoogleService-Info.plist
+
       - name: Decode distribution certificate
         working-directory: web/ios/App
         run: echo "${{ secrets.DIST_CERT_P12_BASE64 }}" | base64 --decode > distribution.p12

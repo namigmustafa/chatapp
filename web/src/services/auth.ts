@@ -13,12 +13,26 @@ import {
   type User as FirebaseUser,
 } from 'firebase/auth'
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'
+import { Capacitor } from '@capacitor/core'
 import { auth, db } from './firebase'
 import { setOffline } from './presence'
 
 const googleProvider = new GoogleAuthProvider()
 
 export const signUpWithEmail = async (email: string, password: string, displayName: string) => {
+  if (Capacitor.isNativePlatform()) {
+    const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication')
+    await FirebaseAuthentication.createUserWithEmailAndPassword({ email, password })
+    const user = auth.currentUser!
+    await updateProfile(user, { displayName })
+    await setDoc(doc(db, 'users', user.uid), {
+      email,
+      displayName,
+      phone: null,
+      createdAt: serverTimestamp(),
+    })
+    return user
+  }
   const cred = await createUserWithEmailAndPassword(auth, email, password)
   await updateProfile(cred.user, { displayName })
   await setDoc(doc(db, 'users', cred.user.uid), {
@@ -31,13 +45,17 @@ export const signUpWithEmail = async (email: string, password: string, displayNa
 }
 
 export const signInWithEmail = async (email: string, password: string) => {
+  if (Capacitor.isNativePlatform()) {
+    const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication')
+    await FirebaseAuthentication.signInWithEmailAndPassword({ email, password })
+    return auth.currentUser
+  }
   const cred = await signInWithEmailAndPassword(auth, email, password)
   return cred.user
 }
 
 export const signInWithGoogle = async () => {
   try {
-    // Popup works on Firebase Hosting; falls back to redirect if blocked (e.g. Vite dev COOP)
     const result = await signInWithPopup(auth, googleProvider)
     const user = result.user
     const existing = await getDoc(doc(db, 'users', user.uid))
@@ -52,7 +70,6 @@ export const signInWithGoogle = async () => {
     return user
   } catch (err: unknown) {
     const code = (err as { code?: string })?.code
-    // COOP blocks popup on some dev servers — fall back to redirect
     if (code === 'auth/popup-blocked' || code === 'auth/cancelled-popup-request') {
       return signInWithRedirect(auth, googleProvider)
     }
