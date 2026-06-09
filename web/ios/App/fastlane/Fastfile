@@ -17,7 +17,7 @@ platform :ios do
     import_certificate(
       certificate_path: "distribution.p12",
       certificate_password: ENV["DIST_CERT_PASSWORD"],
-      keychain_path: "~/Library/Keychains/#{keychain_name}-db",
+      keychain_path: File.expand_path("~/Library/Keychains/#{keychain_name}-db"),
       keychain_password: keychain_password,
     )
 
@@ -30,6 +30,7 @@ platform :ios do
     get_provisioning_profile(
       api_key: api_key,
       app_identifier: "app.chatapp.p2p",
+      skip_certificate_verification: true,
     )
 
     build_app(
