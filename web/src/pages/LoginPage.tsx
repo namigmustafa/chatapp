@@ -16,13 +16,11 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Bağlantı zaman aşımı — internet bağlantınızı kontrol edin')), 10000)
-      )
-      await Promise.race([signInWithEmail(email, password), timeout])
+      await signInWithEmail(email, password)
       navigate('/')
     } catch (err: any) {
-      setError(err.message || 'Giriş başarısız')
+      const detail = JSON.stringify({ message: err.message, code: err.code, name: err.name }, null, 2)
+      setError(detail)
     } finally {
       setLoading(false)
     }
@@ -33,7 +31,18 @@ export default function LoginPage() {
     try {
       await signInWithGoogle()
     } catch (err: any) {
-      setError(err.message || 'Google girişi başarısız')
+      const detail = JSON.stringify({ message: err.message, code: err.code, name: err.name }, null, 2)
+      setError(detail)
+    }
+  }
+
+  const handleNetworkTest = async () => {
+    setError('Test ediliyor...')
+    try {
+      const res = await fetch('https://identitytoolkit.googleapis.com/')
+      setError(`OK: ${res.status} ${res.statusText}`)
+    } catch (err: any) {
+      setError(`FETCH HATA: ${err.message} | ${err.name}`)
     }
   }
 
@@ -60,7 +69,9 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && (
+          <pre className="text-xs text-red-400 bg-zinc-800 p-2 rounded overflow-auto max-h-40 select-all whitespace-pre-wrap break-all">{error}</pre>
+        )}
           <Button type="submit" disabled={loading} className="w-full mt-2">
             {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
           </Button>
@@ -87,6 +98,10 @@ export default function LoginPage() {
           </svg>
           Google ile Giriş Yap
         </Button>
+
+        <button type="button" onClick={handleNetworkTest} className="w-full text-xs text-zinc-500 underline mt-1">
+          Ağ Testi
+        </button>
 
         <p className="text-center text-sm text-zinc-500 mt-2">
           Hesabın yok mu?{' '}
