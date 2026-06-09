@@ -16,7 +16,10 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      await signInWithEmail(email, password)
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Bağlantı zaman aşımı — internet bağlantınızı kontrol edin')), 10000)
+      )
+      await Promise.race([signInWithEmail(email, password), timeout])
       navigate('/')
     } catch (err: any) {
       setError(err.message || 'Giriş başarısız')
@@ -25,8 +28,13 @@ export default function LoginPage() {
     }
   }
 
-  const handleGoogle = () => {
-    signInWithGoogle()
+  const handleGoogle = async () => {
+    setError('')
+    try {
+      await signInWithGoogle()
+    } catch (err: any) {
+      setError(err.message || 'Google girişi başarısız')
+    }
   }
 
   return (
