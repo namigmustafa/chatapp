@@ -12,35 +12,19 @@ async function registerPushToken(userId: string) {
     return
   }
 
-  const { PushNotifications } = await import('@capacitor/push-notifications')
+  const { FirebaseMessaging } = await import('@capacitor-firebase/messaging')
 
-  // Clear previous listeners to avoid duplicates on re-render
-  await PushNotifications.removeAllListeners()
+  // Request permission
+  const { receive } = await FirebaseMessaging.requestPermissions()
+  if (receive !== 'granted') return
 
-  await PushNotifications.addListener('registration', async (token) => {
-    try {
-      const { doc, setDoc } = await import('firebase/firestore')
-      const { db } = await import('@/services/firebase')
-      await setDoc(doc(db, 'fcmTokens', userId), { native: token.value }, { merge: true })
-    } catch (e) {
-      console.error('[FCM] token save failed:', e)
-    }
-  })
+  // Get FCM token directly (not APNs token)
+  const { token } = await FirebaseMessaging.getToken()
+  if (!token) return
 
-  await PushNotifications.addListener('registrationError', (err: any) => {
-    console.error('[FCM] registration error:', JSON.stringify(err))
-  })
-
-  // Check current permission — request only if not yet determined
-  const current = await PushNotifications.checkPermissions()
-  if (current.receive === 'prompt') {
-    const { receive } = await PushNotifications.requestPermissions()
-    if (receive !== 'granted') return
-  } else if (current.receive !== 'granted') {
-    return
-  }
-
-  await PushNotifications.register()
+  const { doc, setDoc } = await import('firebase/firestore')
+  const { db } = await import('@/services/firebase')
+  await setDoc(doc(db, 'fcmTokens', userId), { native: token }, { merge: true })
 }
 
 async function showCallNotification(callerName: string, callType: string) {
