@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core'
 import { onAuthChange, handleGoogleRedirect } from '@/services/auth'
 import { useAuthStore } from '@/store/authStore'
 import { useFileTransferReceiver } from '@/hooks/useFileTransferReceiver'
+import { registerFcmToken } from '@/services/fcm'
 import LoginPage from '@/pages/LoginPage'
 import RegisterPage from '@/pages/RegisterPage'
 import HomePage from '@/pages/HomePage'
@@ -45,6 +46,10 @@ export default function App() {
     const unsub = onAuthChange((user) => {
       clearTimeout(timeout)
       setUser(user)
+      // Register web FCM token after sign-in (non-native only)
+      if (user && !Capacitor.isNativePlatform()) {
+        registerFcmToken(user.uid).catch(() => {})
+      }
     })
 
     return () => {

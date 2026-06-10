@@ -4,13 +4,20 @@ import { useAuthStore } from '@/store/authStore'
 import { useCallStore } from '@/store/callStore'
 import { subscribeIncomingCalls } from '@/services/webrtc'
 
-async function requestNotificationPermission() {
+async function requestNotificationPermission(userId: string) {
   if (Capacitor.isNativePlatform()) {
     const { PushNotifications } = await import('@capacitor/push-notifications')
     const { receive } = await PushNotifications.requestPermissions()
-    if (receive === 'granted') {
-      await PushNotifications.register()
-    }
+    if (receive !== 'granted') return
+
+    // Save the FCM token to Firestore when registration succeeds
+    await PushNotifications.addListener('registration', async (token) => {
+      const { doc, setDoc } = await import('firebase/firestore')
+      const { db } = await import('@/services/firebase')
+      await setDoc(doc(db, 'fcmTokens', userId), { native: token.value }, { merge: true })
+    })
+
+    await PushNotifications.register()
   } else if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission().catch(() => {})
   }
@@ -45,8 +52,9 @@ export const useIncomingCalls = () => {
   const { setIncomingCall, activeCall } = useCallStore()
 
   useEffect(() => {
-    requestNotificationPermission()
-  }, [])
+    if (!user?.uid) return
+    requestNotificationPermission(user.uid)
+  }, [user?.uid])
 
   useEffect(() => {
     if (!user) return
