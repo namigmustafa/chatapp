@@ -4,23 +4,43 @@ import { useAuthStore } from '@/store/authStore'
 import { useCallStore } from '@/store/callStore'
 import { subscribeIncomingCalls } from '@/services/webrtc'
 
-async function requestNotificationPermission(userId: string) {
-  if (Capacitor.isNativePlatform()) {
-    const { PushNotifications } = await import('@capacitor/push-notifications')
-    const { receive } = await PushNotifications.requestPermissions()
-    if (receive !== 'granted') return
+async function registerPushToken(userId: string) {
+  if (!Capacitor.isNativePlatform()) {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {})
+    }
+    return
+  }
 
-    // Save the FCM token to Firestore when registration succeeds
-    await PushNotifications.addListener('registration', async (token) => {
+  const { PushNotifications } = await import('@capacitor/push-notifications')
+
+  // Clear previous listeners to avoid duplicates on re-render
+  await PushNotifications.removeAllListeners()
+
+  await PushNotifications.addListener('registration', async (token) => {
+    try {
       const { doc, setDoc } = await import('firebase/firestore')
       const { db } = await import('@/services/firebase')
       await setDoc(doc(db, 'fcmTokens', userId), { native: token.value }, { merge: true })
-    })
+    } catch (e) {
+      console.error('[FCM] token save failed:', e)
+    }
+  })
 
-    await PushNotifications.register()
-  } else if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission().catch(() => {})
+  await PushNotifications.addListener('registrationError', (err) => {
+    console.error('[FCM] registration error:', JSON.stringify(err))
+  })
+
+  // Check current permission — request only if not yet determined
+  const current = await PushNotifications.checkPermissions()
+  if (current.receive === 'prompt') {
+    const { receive } = await PushNotifications.requestPermissions()
+    if (receive !== 'granted') return
+  } else if (current.receive !== 'granted') {
+    return
   }
+
+  await PushNotifications.register()
 }
 
 async function showCallNotification(callerName: string, callType: string) {
@@ -53,7 +73,7 @@ export const useIncomingCalls = () => {
 
   useEffect(() => {
     if (!user?.uid) return
-    requestNotificationPermission(user.uid)
+    registerPushToken(user.uid)
   }, [user?.uid])
 
   useEffect(() => {
