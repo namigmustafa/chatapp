@@ -21,15 +21,15 @@ export default function RegisterPage() {
     e.preventDefault()
     setError('')
     if (!displayName.trim()) {
-      setError('Ad soyad gerekli')
+      setError('Full name is required')
       return
     }
     if (password !== confirm) {
-      setError('Şifreler eşleşmiyor')
+      setError('Passwords do not match')
       return
     }
     if (password.length < 8) {
-      setError('Şifre en az 8 karakter olmalı')
+      setError('Password must be at least 8 characters')
       return
     }
     setLoading(true)
@@ -37,7 +37,7 @@ export default function RegisterPage() {
       await signUpWithEmail(email, password, displayName.trim())
       navigate('/')
     } catch (err: any) {
-      setError(err.message || 'Kayıt başarısız')
+      setError(err.message || 'Registration failed')
     } finally {
       setLoading(false)
     }
@@ -46,51 +46,51 @@ export default function RegisterPage() {
   return (
     <div className="flex-1 flex items-center justify-center bg-zinc-950">
       <div className="w-full max-w-sm p-8 bg-zinc-900 rounded-2xl border border-zinc-800">
-        <h1 className="text-2xl font-semibold text-white mb-2">Kayıt Ol</h1>
-        <p className="text-zinc-400 text-sm mb-6">Yeni hesap oluştur</p>
+        <h1 className="text-2xl font-semibold text-white mb-2">Sign Up</h1>
+        <p className="text-zinc-400 text-sm mb-6">Create a new account</p>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Input
-            label="Ad Soyad"
+            label="Full Name"
             type="text"
-            placeholder="Adın ve soyadın"
+            placeholder="Your full name"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             required
           />
           <Input
-            label="E-posta"
+            label="Email"
             type="email"
-            placeholder="ad@ornek.com"
+            placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
           />
           <Input
-            label="Şifre"
+            label="Password"
             type="password"
-            placeholder="En az 8 karakter"
+            placeholder="At least 8 characters"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
           />
           <Input
-            label="Şifre Tekrar"
+            label="Confirm Password"
             type="password"
-            placeholder="Şifreyi tekrar gir"
+            placeholder="Re-enter your password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             required
           />
           {error && <p className="text-sm text-red-400">{error}</p>}
           <Button type="submit" disabled={loading} className="w-full mt-2">
-            {loading ? 'Kayıt yapılıyor...' : 'Kayıt Ol'}
+            {loading ? 'Creating account...' : 'Sign Up'}
           </Button>
         </form>
 
         <div className="flex items-center gap-3 mt-2">
           <div className="flex-1 h-px bg-zinc-700" />
-          <span className="text-xs text-zinc-500">veya</span>
+          <span className="text-xs text-zinc-500">or</span>
           <div className="flex-1 h-px bg-zinc-700" />
         </div>
 
@@ -107,13 +107,13 @@ export default function RegisterPage() {
             <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
             <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
           </svg>
-          Google ile Kayıt Ol
+          Sign Up with Google
         </Button>
 
         <p className="text-center text-sm text-zinc-500 mt-2">
-          Hesabın var mı?{' '}
+          Already have an account?{' '}
           <Link to="/login" className="text-indigo-400 hover:underline">
-            Giriş Yap
+            Sign In
           </Link>
         </p>
       </div>

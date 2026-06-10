@@ -6,15 +6,16 @@ import {
   getDocs,
   updateDoc,
   deleteDoc,
+  onSnapshot,
   query,
   where,
   orderBy,
   startAt,
   endAt,
   limit,
-  // orderBy kept for searchAliases
   serverTimestamp,
 } from 'firebase/firestore'
+import type { Unsubscribe } from 'firebase/firestore'
 import { db } from './firebase'
 import type { Alias, AliasSchedule } from '@/types'
 
@@ -22,16 +23,18 @@ const ALIASES = 'aliases'
 
 export const createAlias = async (
   userId: string,
-  name: string
+  name: string,
+  description = ''
 ): Promise<Alias> => {
   const normalized = name.toLowerCase().trim()
 
   const existing = await getDoc(doc(db, ALIASES, normalized))
-  if (existing.exists()) throw new Error('Bu alias zaten alınmış')
+  if (existing.exists()) throw new Error('This alias is already taken')
 
   const aliasData = {
     userId,
     name: normalized,
+    description: description.slice(0, 130),
     isActive: true,
     schedule: {
       enabled: false,
@@ -117,6 +120,70 @@ export const unblockUser = async (aliasId: string, blockedUserId: string) => {
 export const deleteAlias = async (aliasId: string) => {
   await deleteDoc(doc(db, ALIASES, aliasId))
 }
+
+export type AliasStatus =
+  | { reachable: true }
+  | { reachable: false; reason: 'inactive' | 'blocked' | 'schedule'; scheduleInfo?: string }
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const DAY_MAP: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+
+function formatScheduleInfo(days: number[], startTime: string, endTime: string): string {
+  const dayLabels = days
+    .slice()
+    .sort((a, b) => a - b)
+    .map((d) => DAY_NAMES[d])
+    .join(', ')
+  return `${dayLabels} · ${startTime}–${endTime}`
+}
+
+export const getAliasStatus = (alias: Alias, callerUserId: string): AliasStatus => {
+  if (!alias.isActive) return { reachable: false, reason: 'inactive' }
+  if (alias.blockedUsers.includes(callerUserId)) return { reachable: false, reason: 'blocked' }
+
+  if (alias.schedule.enabled) {
+    const now = new Date()
+    const tz = alias.schedule.timezone
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+      weekday: 'short',
+      hour12: false,
+    }).formatToParts(now)
+
+    const hour = Number(parts.find((p) => p.type === 'hour')?.value)
+    const minute = Number(parts.find((p) => p.type === 'minute')?.value)
+    const weekday = parts.find((p) => p.type === 'weekday')?.value || ''
+    const currentDay = DAY_MAP[weekday] ?? now.getDay()
+
+    const scheduleInfo = formatScheduleInfo(alias.schedule.days, alias.schedule.startTime, alias.schedule.endTime)
+
+    if (!alias.schedule.days.includes(currentDay)) {
+      return { reachable: false, reason: 'schedule', scheduleInfo }
+    }
+
+    const currentMinutes = hour * 60 + minute
+    const [startH, startM] = alias.schedule.startTime.split(':').map(Number)
+    const [endH, endM] = alias.schedule.endTime.split(':').map(Number)
+    const startMinutes = startH * 60 + startM
+    const endMinutes = endH * 60 + endM
+
+    if (currentMinutes < startMinutes || currentMinutes >= endMinutes) {
+      return { reachable: false, reason: 'schedule', scheduleInfo }
+    }
+  }
+
+  return { reachable: true }
+}
+
+export const subscribeAlias = (
+  aliasId: string,
+  cb: (alias: Alias | null) => void
+): Unsubscribe =>
+  onSnapshot(doc(db, ALIASES, aliasId), (snap) => {
+    cb(snap.exists() ? ({ id: snap.id, ...snap.data() } as Alias) : null)
+  })
 
 export const isAliasReachable = (alias: Alias, callerUserId: string): boolean => {
   if (!alias.isActive) return false

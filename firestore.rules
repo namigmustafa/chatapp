@@ -10,6 +10,21 @@ service cloud.firestore {
       return request.auth.uid == userId;
     }
 
+    // Returns the recipient alias data for a given conversation
+    function recipientAlias(convId) {
+      let conv = get(/databases/$(database)/documents/conversations/$(convId)).data;
+      let aliasId = conv.participants[0] == request.auth.uid
+        ? conv.participantAliases[1]
+        : conv.participantAliases[0];
+      return get(/databases/$(database)/documents/aliases/$(aliasId)).data;
+    }
+
+    // Recipient alias must be active and must not have blocked the sender
+    function canSendMessage(convId) {
+      let alias = recipientAlias(convId);
+      return alias.isActive == true && !(request.auth.uid in alias.blockedUsers);
+    }
+
     // Users — sadece kendi profilini okuyabilir/yazabilir
     match /users/{userId} {
       allow read: if isAuthenticated();
@@ -38,7 +53,9 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/conversations/$(resource.data.conversationId)) &&
         request.auth.uid in get(/databases/$(database)/documents/conversations/$(resource.data.conversationId)).data.participants
       );
-      allow create: if isAuthenticated() && request.resource.data.senderId == request.auth.uid;
+      allow create: if isAuthenticated()
+        && request.resource.data.senderId == request.auth.uid
+        && canSendMessage(request.resource.data.conversationId);
       allow update: if isAuthenticated() && (
         resource.data.senderId == request.auth.uid ||
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'deletedAt'])

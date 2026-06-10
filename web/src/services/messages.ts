@@ -6,6 +6,8 @@ import {
   updateDoc,
   query,
   where,
+  getDocs,
+  limit,
   onSnapshot,
   serverTimestamp,
 } from 'firebase/firestore'
@@ -109,4 +111,15 @@ export const subscribeMessages = (
       .sort((a, b) => toMs(a.createdAt) - toMs(b.createdAt))
     cb(msgs)
   })
+}
+
+// Returns lowercased concatenated text content of last N messages in a conversation
+export const getConversationText = async (conversationId: string, n = 50): Promise<string> => {
+  const snap = await getDocs(
+    query(collection(db, MESSAGES), where('conversationId', '==', conversationId), limit(n))
+  )
+  return snap.docs
+    .map((d) => (d.data().content as string | undefined) ?? '')
+    .join(' ')
+    .toLowerCase()
 }

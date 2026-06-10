@@ -9,6 +9,7 @@ export interface Alias {
   id: string
   userId: string
   name: string
+  description: string
   isActive: boolean
   schedule: AliasSchedule
   blockedUsers: string[]

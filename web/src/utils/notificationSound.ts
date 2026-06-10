@@ -6,6 +6,23 @@ const getCtx = async (): Promise<AudioContext> => {
   return ctx
 }
 
+export const unlockAudio = () => {
+  getCtx().catch(() => {})
+}
+
+// Call once on app load to unlock audio on first user gesture
+if (typeof window !== 'undefined') {
+  const unlock = () => {
+    unlockAudio()
+    window.removeEventListener('click', unlock)
+    window.removeEventListener('touchstart', unlock)
+    window.removeEventListener('keydown', unlock)
+  }
+  window.addEventListener('click', unlock)
+  window.addEventListener('touchstart', unlock)
+  window.addEventListener('keydown', unlock)
+}
+
 const playTone = async (freq: number, startOffset: number, duration: number, volume = 0.3) => {
   const ac = await getCtx()
   const osc = ac.createOscillator()

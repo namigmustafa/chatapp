@@ -10,7 +10,8 @@ import { subscribePresence } from '@/services/presence'
 import type { Message } from '@/types'
 import { playMessageSound } from '@/utils/notificationSound'
 import { useWebRTC } from '@/hooks/useWebRTC'
-import { Button } from '@/components/ui/Button'
+import { subscribeAlias, getAliasStatus } from '@/services/aliases'
+import type { Alias } from '@/types'
 import AliasAvatar from '@/components/ui/AliasAvatar'
 import MessageBubble from './MessageBubble'
 
@@ -40,6 +41,7 @@ export default function ChatWindow({
   const [otherIsTyping, setOtherIsTyping] = useState(false)
   const [otherIsOnline, setOtherIsOnline] = useState(false)
   const [showEmoji, setShowEmoji] = useState(false)
+  const [otherAlias, setOtherAlias] = useState<Alias | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -50,7 +52,6 @@ export default function ChatWindow({
     if (user && isVisible) markConversationRead(conversationId, user.uid)
     const unsub = subscribeMessages(conversationId, (msgs) => {
       if (knownIdsRef.current === null) {
-        // First load — populate known IDs, no sound
         knownIdsRef.current = new Set(msgs.map((m) => m.id))
       } else {
         const hasNewIncoming = msgs.some(
@@ -83,6 +84,11 @@ export default function ChatWindow({
     const unsub = subscribePresence(otherUserId, setOtherIsOnline)
     return unsub
   }, [otherUserId])
+
+  useEffect(() => {
+    const unsub = subscribeAlias(otherAliasId, setOtherAlias)
+    return unsub
+  }, [otherAliasId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -118,88 +124,105 @@ export default function ChatWindow({
     sendFile(conversationId, otherUserId, file).catch(console.error)
   }
 
-  const handleSend = async (e: React.FormEvent) => {
+  const aliasStatus = otherAlias && user ? getAliasStatus(otherAlias, user.uid) : null
+  const canMessage = !aliasStatus || aliasStatus.reachable
+
+  const handleSend = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!text.trim() || !user) return
+    const content = text.trim()
+    if (!content || !user || !canMessage) return
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
-    setTyping(conversationId, user.uid, false)
-    await sendMessage(conversationId, user.uid, text.trim())
     setText('')
+    setTyping(conversationId, user.uid, false)
+    sendMessage(conversationId, user.uid, content).catch(console.error)
   }
 
   return (
     <div className="relative flex flex-col h-full overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-3 border-b border-zinc-800 bg-zinc-900 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          {onBack && (
-            <button
-              onClick={onBack}
-              className="md:hidden text-zinc-400 hover:text-white p-1 -ml-1 flex-shrink-0"
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
-          )}
-          <div className="flex items-center gap-2">
-          <div className="relative">
-            <AliasAvatar name={otherAliasId} size="sm" />
-            <span
-              className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-zinc-900 transition-colors ${
-                otherIsOnline ? 'bg-emerald-400' : 'bg-zinc-600'
-              }`}
-            />
+      {/* ── Header ── */}
+      <div className="flex items-center gap-3 px-3 py-2.5 border-b border-zinc-800 bg-zinc-900 flex-shrink-0">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="md:hidden text-zinc-400 hover:text-white p-1.5 -ml-1 rounded-full hover:bg-zinc-800 transition-colors flex-shrink-0"
+          >
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+              <path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        )}
+
+        <div className="relative flex-shrink-0">
+          <AliasAvatar name={otherAliasId} size="sm" />
+          <span
+            className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-zinc-900 transition-colors ${
+              otherIsOnline ? 'bg-emerald-400' : 'bg-zinc-600'
+            }`}
+          />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="font-mono font-semibold text-white text-sm truncate">
+              {myAliasId.toUpperCase()}
+            </span>
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="text-zinc-600 flex-shrink-0">
+              <path d="M2 6h8M7 3l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span className="font-mono font-semibold text-white text-sm truncate">
+              {otherAliasId.toUpperCase()}
+            </span>
           </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-mono font-bold text-white tracking-wide text-sm">
-                {myAliasId.toUpperCase()}
-              </span>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-zinc-500 flex-shrink-0">
-                <path d="M2 6h8M7 3l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <span className="font-mono font-bold text-white tracking-wide text-sm">
-                {otherAliasId.toUpperCase()}
-              </span>
+          <p className="text-[11px] mt-0.5 leading-none">
+            {otherIsTyping ? (
+              <span className="text-indigo-400 animate-pulse">typing...</span>
+            ) : otherIsOnline ? (
+              <span className="text-emerald-500">online</span>
+            ) : (
+              <span className="text-zinc-600">offline</span>
+            )}
+          </p>
+        </div>
+
+        {(() => {
+          const st = otherAlias && user ? getAliasStatus(otherAlias, user.uid) : null
+          const canCall = !st || st.reachable
+          return (
+            <div className="flex items-center gap-0.5 flex-shrink-0">
+              <button
+                onClick={() => canCall && startCall(myAliasId, otherAliasId, otherUserId, 'audio')}
+                title={canCall ? 'Audio call' : 'Alias is currently unreachable'}
+                disabled={!canCall}
+                className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.77a19.79 19.79 0 01-3.07-8.67A2 2 0 012 1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/>
+                </svg>
+              </button>
+              <button
+                onClick={() => canCall && startCall(myAliasId, otherAliasId, otherUserId, 'video')}
+                title={canCall ? 'Video call' : 'Alias is currently unreachable'}
+                disabled={!canCall}
+                className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="23 7 16 12 23 17 23 7"/>
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                </svg>
+              </button>
             </div>
-            <p className="text-xs mt-0.5">
-              {otherIsTyping ? (
-                <span className="text-indigo-400 animate-pulse">yazıyor...</span>
-              ) : otherIsOnline ? (
-                <span className="text-emerald-500">çevrimiçi</span>
-              ) : (
-                <span className="text-zinc-500">çevrimdışı</span>
-              )}
-            </p>
-          </div>
-          </div>
-        </div>
-        <div className="flex gap-1">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => startCall(myAliasId, otherAliasId, otherUserId, 'audio')}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.77a19.79 19.79 0 01-3.07-8.67A2 2 0 012 1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/>
-            </svg>
-            <span className="hidden sm:inline ml-1">Sesli</span>
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => startCall(myAliasId, otherAliasId, otherUserId, 'video')}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="23 7 16 12 23 17 23 7"/>
-              <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-            </svg>
-            <span className="hidden sm:inline ml-1">Video</span>
-          </Button>
-        </div>
+          )
+        })()}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 min-h-0">
+
+      <div
+        className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-1 min-h-0"
+        style={{
+          backgroundColor: '#0b141a',
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Ccircle cx='40' cy='40' r='1.5' fill='rgba(255,255,255,0.03)'/%3E%3Ccircle cx='0' cy='0' r='1.5' fill='rgba(255,255,255,0.03)'/%3E%3Ccircle cx='80' cy='0' r='1.5' fill='rgba(255,255,255,0.03)'/%3E%3Ccircle cx='0' cy='80' r='1.5' fill='rgba(255,255,255,0.03)'/%3E%3Ccircle cx='80' cy='80' r='1.5' fill='rgba(255,255,255,0.03)'/%3E%3C/svg%3E")`,
+        }}
+      >
         {messages.map((msg) => (
           <MessageBubble
             key={msg.id}
@@ -228,7 +251,7 @@ export default function ChatWindow({
 
       {/* Emoji picker */}
       {showEmoji && (
-        <div className="absolute bottom-20 left-2 z-20 shadow-2xl rounded-2xl overflow-hidden">
+        <div className="absolute bottom-16 left-2 z-20 shadow-2xl rounded-2xl overflow-hidden">
           <Suspense fallback={null}>
             <EmojiPicker
               data={async () => (await import('@emoji-mart/data')).default}
@@ -245,10 +268,46 @@ export default function ChatWindow({
         </div>
       )}
 
+      {/* ── Reachability warning bubble ── */}
+      {aliasStatus && !aliasStatus.reachable && (
+        <div className="flex justify-center px-4 pt-3 pb-2 flex-shrink-0" style={{ backgroundColor: '#0b141a' }}>
+          <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-amber-900/50 border border-amber-700/30 w-full max-w-sm">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 text-amber-400">
+              <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+            </svg>
+            <div className="flex-1 flex flex-col gap-1 items-center text-center">
+              {aliasStatus.reason === 'inactive' && (
+                <>
+                  <p className="text-[13px] font-semibold text-amber-300 leading-tight">@{otherAliasId} is inactive</p>
+                  <p className="text-[11px] text-amber-500">Messages cannot be sent</p>
+                </>
+              )}
+              {aliasStatus.reason === 'blocked' && (
+                <>
+                  <p className="text-[13px] font-semibold text-amber-300 leading-tight">@{otherAliasId} has blocked you</p>
+                  <p className="text-[11px] text-amber-500">You cannot send messages to this alias</p>
+                </>
+              )}
+              {aliasStatus.reason === 'schedule' && (() => {
+                const info = 'scheduleInfo' in aliasStatus ? aliasStatus.scheduleInfo ?? '' : ''
+                const [days, time] = info.split(' · ')
+                return (
+                  <>
+                    <p className="text-[13px] font-semibold text-amber-300 leading-tight">@{otherAliasId} is not available right now</p>
+                    {days && <p className="text-[11px] text-amber-400/80">{days}</p>}
+                    {time && <p className="text-[11px] text-amber-500">Active hours: <span className="text-amber-300 font-medium">{time}</span></p>}
+                  </>
+                )
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
       <form
         onSubmit={(e) => { setShowEmoji(false); handleSend(e) }}
-        className="flex gap-2 p-3 border-t border-zinc-800 bg-zinc-900 flex-shrink-0"
-        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+        className="flex items-center gap-1.5 px-3 py-2.5 border-t border-zinc-800 bg-zinc-900 flex-shrink-0"
+        style={{ paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom))' }}
       >
         <input
           ref={fileInputRef}
@@ -258,23 +317,23 @@ export default function ChatWindow({
           onChange={handleFile}
         />
 
-        {/* Paperclip button */}
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={Object.keys(fileProgress).length > 0}
-          className="flex-shrink-0 p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-50"
+          title="Attach file"
+          className="flex-shrink-0 p-2 rounded-full text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors disabled:opacity-40"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
           </svg>
         </button>
 
-        {/* Emoji button */}
         <button
           type="button"
           onClick={() => setShowEmoji((v) => !v)}
-          className={`flex-shrink-0 p-2 rounded-xl transition-colors ${showEmoji ? 'text-indigo-400 bg-zinc-800' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+          title="Emoji"
+          className={`flex-shrink-0 p-2 rounded-full transition-colors ${showEmoji ? 'text-indigo-400 bg-zinc-800' : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800'}`}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10"/>
@@ -283,17 +342,28 @@ export default function ChatWindow({
             <line x1="15" y1="9" x2="15.01" y2="9"/>
           </svg>
         </button>
+
         <input
           ref={inputRef}
-          className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-indigo-500"
-          placeholder="Mesaj yaz..."
+          className="flex-1 bg-zinc-800 rounded-full px-4 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none border-none min-w-0 disabled:opacity-40 disabled:cursor-not-allowed"
+          placeholder={canMessage ? 'Type a message...' : 'This alias is currently unreachable'}
           value={text}
+          disabled={!canMessage}
           onChange={handleTextChange}
           onFocus={() => setShowEmoji(false)}
         />
-        <Button type="submit" disabled={!text.trim()}>
-          Gönder
-        </Button>
+
+        <button
+          type="submit"
+          disabled={!text.trim() || !canMessage}
+          title="Send"
+          className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white transition-colors"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
       </form>
     </div>
   )

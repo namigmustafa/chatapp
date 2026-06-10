@@ -174,7 +174,7 @@ export default function CallOverlay() {
           <div className="flex flex-col items-center gap-3">
             <AliasAvatar name={callerName} size="lg" />
             <div className="text-center">
-              <p className="text-zinc-400 text-sm">Gelen {incomingCall.type === 'video' ? 'görüntülü' : 'sesli'} arama</p>
+              <p className="text-zinc-400 text-sm">Incoming {incomingCall.type === 'video' ? 'video' : 'voice'} call</p>
               <p className="text-white font-bold text-xl mt-1">{callerName.toUpperCase()}</p>
             </div>
           </div>
@@ -192,16 +192,16 @@ export default function CallOverlay() {
 
           <div className="flex gap-8">
             <div className="flex flex-col items-center gap-2">
-              <RoundBtn danger onClick={(_e) => declineCall(incomingCall.id)} label="Reddet">
+              <RoundBtn danger onClick={(_e) => declineCall(incomingCall.id)} label="Decline">
                 <PhoneOffIcon />
               </RoundBtn>
-              <span className="text-xs text-zinc-500">Reddet</span>
+              <span className="text-xs text-zinc-500">Decline</span>
             </div>
             <div className="flex flex-col items-center gap-2">
-              <RoundBtn onClick={(_e) => acceptCall(incomingCall)} label="Cevapla">
+              <RoundBtn onClick={(_e) => acceptCall(incomingCall)} label="Answer">
                 <PhoneIcon />
               </RoundBtn>
-              <span className="text-xs text-zinc-400">Cevapla</span>
+              <span className="text-xs text-zinc-400">Answer</span>
             </div>
           </div>
         </div>
@@ -243,7 +243,7 @@ export default function CallOverlay() {
             <p className="text-zinc-400 text-sm mt-2">
               {isActive
                 ? <span className="tabular-nums font-mono">{timer}</span>
-                : <span className="animate-pulse">Çalıyor...</span>
+                : <span className="animate-pulse">Ringing...</span>
               }
             </p>
           </div>
@@ -255,7 +255,7 @@ export default function CallOverlay() {
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
           <AliasAvatar name={otherName} size="lg" />
           <p className="text-white font-bold text-xl">{otherName.toUpperCase()}</p>
-          <p className="text-zinc-400 text-sm animate-pulse">Bağlanıyor...</p>
+          <p className="text-zinc-400 text-sm animate-pulse">Connecting...</p>
         </div>
       )}
 
@@ -290,26 +290,26 @@ export default function CallOverlay() {
       >
         <div className="flex items-end justify-center gap-8">
           <div className="flex flex-col items-center gap-2">
-            <RoundBtn active={isMuted} onClick={(e) => { e.stopPropagation(); toggleMute(); revealControls() }} label={isMuted ? 'Sesi aç' : 'Sesi kapat'}>
+            <RoundBtn active={isMuted} onClick={(e) => { e.stopPropagation(); toggleMute(); revealControls() }} label={isMuted ? 'Unmute' : 'Mute'}>
               {isMuted ? <MicOffIcon /> : <MicIcon />}
             </RoundBtn>
-            <span className="text-xs text-white/70">{isMuted ? 'Ses Kapalı' : 'Mikrofon'}</span>
+            <span className="text-xs text-white/70">{isMuted ? 'Muted' : 'Microphone'}</span>
           </div>
 
           {isVideo && (
             <div className="flex flex-col items-center gap-2">
-              <RoundBtn active={isVideoOff} onClick={(e) => { e.stopPropagation(); toggleVideo(); revealControls() }} label={isVideoOff ? 'Kamerayı aç' : 'Kamerayı kapat'}>
+              <RoundBtn active={isVideoOff} onClick={(e) => { e.stopPropagation(); toggleVideo(); revealControls() }} label={isVideoOff ? 'Turn on camera' : 'Turn off camera'}>
                 {isVideoOff ? <VideoOffIcon /> : <VideoIcon />}
               </RoundBtn>
-              <span className="text-xs text-white/70">{isVideoOff ? 'Kamera Kapalı' : 'Kamera'}</span>
+              <span className="text-xs text-white/70">{isVideoOff ? 'Camera Off' : 'Camera'}</span>
             </div>
           )}
 
           <div className="flex flex-col items-center gap-2">
-            <RoundBtn danger onClick={(e) => { e.stopPropagation(); hangUp(activeCall.id) }} label="Aramayı bitir">
+            <RoundBtn danger onClick={(e) => { e.stopPropagation(); hangUp(activeCall.id) }} label="End call">
               <PhoneOffIcon />
             </RoundBtn>
-            <span className="text-xs text-white/70">Bitir</span>
+            <span className="text-xs text-white/70">End</span>
           </div>
         </div>
       </div>

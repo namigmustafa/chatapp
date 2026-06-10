@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth'
+import { getAuth, initializeAuth, indexedDBLocalPersistence } from 'firebase/auth'
 import { Capacitor } from '@capacitor/core'
 import { getFirestore } from 'firebase/firestore'
 import { getDatabase } from 'firebase/database'
@@ -19,10 +19,11 @@ const firebaseConfig = {
 }
 
 export const app = initializeApp(firebaseConfig)
-export const auth = getAuth(app)
-if (!Capacitor.isNativePlatform()) {
-  setPersistence(auth, browserLocalPersistence).catch(() => {})
-}
+// WKWebView (iOS) and Android WebView don't support localStorage reliably.
+// initializeAuth with indexedDBLocalPersistence is the documented fix for Capacitor.
+export const auth = Capacitor.isNativePlatform()
+  ? initializeAuth(app, { persistence: indexedDBLocalPersistence })
+  : getAuth(app)
 export const db = getFirestore(app)
 export const rtdb = getDatabase(app)
 export const storage = getStorage(app)

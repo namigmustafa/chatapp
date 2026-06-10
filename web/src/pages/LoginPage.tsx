@@ -19,7 +19,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('TIMEOUT — 15sn cevap yok')), 15000)
+        setTimeout(() => reject(new Error('TIMEOUT — no response after 15s')), 15000)
       )
       await Promise.race([signInWithEmail(email, password), timeout])
       navigate('/')
@@ -42,7 +42,7 @@ export default function LoginPage() {
   }
 
   const handleNetworkTest = async () => {
-    setError('POST test ediliyor...')
+    setError('Testing POST...')
     try {
       const apiKey = import.meta.env.VITE_FIREBASE_API_KEY
       const res = await fetch(
@@ -55,36 +55,36 @@ export default function LoginPage() {
       )
       const data = await res.json()
       if (!res.ok) {
-        setError(`POST OK (hata): ${JSON.stringify(data.error)}`)
+        setError(`POST OK (error): ${JSON.stringify(data.error)}`)
         return
       }
       // POST worked! Now sign in with credential
-      setError('POST çalıştı, credential ile giriş...')
+      setError('POST succeeded, signing in with credential...')
       const credential = EmailAuthProvider.credential(email, password)
       await signInWithCredential(auth, credential)
       navigate('/')
     } catch (err: any) {
-      setError(`POST HATA: ${err.message}`)
+      setError(`POST ERROR: ${err.message}`)
     }
   }
 
   return (
     <div className="flex-1 flex items-center justify-center bg-zinc-950">
       <div className="w-full max-w-sm p-8 bg-zinc-900 rounded-2xl border border-zinc-800">
-        <h1 className="text-2xl font-semibold text-white mb-2">Giriş Yap</h1>
-        <p className="text-zinc-400 text-sm mb-6">Hesabına giriş yap</p>
+        <h1 className="text-2xl font-semibold text-white mb-2">Sign In</h1>
+        <p className="text-zinc-400 text-sm mb-6">Sign in to your account</p>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Input
-            label="E-posta"
+            label="Email"
             type="email"
-            placeholder="ad@ornek.com"
+            placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
           />
           <Input
-            label="Şifre"
+            label="Password"
             type="password"
             placeholder="••••••••"
             value={password}
@@ -95,13 +95,13 @@ export default function LoginPage() {
           <pre className="text-xs text-red-400 bg-zinc-800 p-2 rounded overflow-auto max-h-40 select-all whitespace-pre-wrap break-all">{error}</pre>
         )}
           <Button type="submit" disabled={loading} className="w-full mt-2">
-            {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
+            {loading ? 'Signing in...' : 'Sign In'}
           </Button>
         </form>
 
         <div className="flex items-center gap-3 mt-2">
           <div className="flex-1 h-px bg-zinc-700" />
-          <span className="text-xs text-zinc-500">veya</span>
+          <span className="text-xs text-zinc-500">or</span>
           <div className="flex-1 h-px bg-zinc-700" />
         </div>
 
@@ -118,17 +118,17 @@ export default function LoginPage() {
             <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
             <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
           </svg>
-          Google ile Giriş Yap
+          Sign In with Google
         </Button>
 
         <button type="button" onClick={handleNetworkTest} className="w-full text-xs text-zinc-500 underline mt-1">
-          POST Test + Direkt Giriş
+          POST Test + Direct Sign In
         </button>
 
         <p className="text-center text-sm text-zinc-500 mt-2">
-          Hesabın yok mu?{' '}
+          Don't have an account?{' '}
           <Link to="/register" className="text-indigo-400 hover:underline">
-            Kayıt Ol
+            Sign Up
           </Link>
         </p>
       </div>

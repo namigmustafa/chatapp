@@ -15,3 +15,54 @@ body {
   height: 100vh;
   display: flex;
 }
+
+/* Message bubble tails */
+.msg-tail-own {
+  position: relative;
+  overflow: visible !important;
+}
+.msg-tail-own::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: -7px;       /* 1px overlap hides anti-aliasing seam */
+  width: 8px;
+  height: 13px;
+  background: #1d3461;
+  clip-path: polygon(0% 0%, 0% 100%, 100% 100%);
+}
+
+.msg-tail-other {
+  position: relative;
+  overflow: visible !important;
+}
+.msg-tail-other::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: -7px;        /* 1px overlap hides anti-aliasing seam */
+  width: 8px;
+  height: 13px;
+  background: #1e2d38;
+  clip-path: polygon(100% 0%, 0% 100%, 100% 100%);
+}
+
+/* Thin scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.08) transparent;
+}

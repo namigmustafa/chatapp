@@ -73,8 +73,8 @@ export default function HomePage() {
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center px-6">
-              <p className="text-zinc-500 text-lg">Bir sohbet seç veya yeni sohbet başlat</p>
-              <p className="text-zinc-600 text-sm mt-2">Alias yönetimi için ayarlar ikonuna tıkla</p>
+              <p className="text-zinc-500 text-lg">Select a chat or start a new one</p>
+              <p className="text-zinc-600 text-sm mt-2">Click the settings icon to manage your aliases</p>
             </div>
           </div>
         )}

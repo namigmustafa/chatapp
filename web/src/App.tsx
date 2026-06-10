@@ -11,14 +11,14 @@ import SettingsPage from '@/pages/SettingsPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore()
-  if (loading) return <div className="flex-1 flex items-center justify-center text-zinc-400">Yükleniyor...</div>
+  if (loading) return <div className="flex-1 flex items-center justify-center text-zinc-400">Loading...</div>
   if (!user) return <Navigate to="/login" replace />
   return <>{children}</>
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore()
-  if (loading) return <div className="flex-1 flex items-center justify-center text-zinc-400">Yükleniyor...</div>
+  if (loading) return <div className="flex-1 flex items-center justify-center text-zinc-400">Loading...</div>
   if (user) return <Navigate to="/" replace />
   return <>{children}</>
 }
@@ -37,10 +37,10 @@ export default function App() {
       handleGoogleRedirect().catch(() => {})
     }
 
-    // Fallback: if Firebase auth doesn't respond in 5s, stop loading
+    // Fallback: if Firebase auth doesn't respond in 10s, stop loading
     const timeout = setTimeout(() => {
       useAuthStore.getState().setLoading(false)
-    }, 5000)
+    }, 10000)
 
     const unsub = onAuthChange((user) => {
       clearTimeout(timeout)

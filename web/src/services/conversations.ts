@@ -21,8 +21,8 @@ export const getOrCreateConversation = async (
   userId2: string,
   aliasId2: string
 ): Promise<string> => {
-  if (userId1 === userId2) throw new Error('Kendinizle sohbet başlatamazsınız')
-  if (aliasId1 === aliasId2) throw new Error('Aynı alias ile sohbet başlatamazsınız')
+  if (userId1 === userId2) throw new Error('You cannot start a conversation with yourself')
+  if (aliasId1 === aliasId2) throw new Error('You cannot start a conversation with the same alias')
 
   // Conversation ID is alias-based so each alias pair has its own conversation
   const sortedAliases = [aliasId1, aliasId2].sort()
