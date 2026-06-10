@@ -47,6 +47,12 @@ platform :ios do
       xcode_project.save
     end
 
+    # Set entitlements file so push notifications work
+    app_target.build_configurations.each do |config|
+      config.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'App/App.entitlements'
+    end
+    xcode_project.save
+
     update_code_signing_settings(
       use_automatic_signing: false,
       path: "App.xcodeproj",

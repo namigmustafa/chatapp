@@ -27,7 +27,7 @@ async function registerPushToken(userId: string) {
     }
   })
 
-  await PushNotifications.addListener('registrationError', (err) => {
+  await PushNotifications.addListener('registrationError', (err: any) => {
     console.error('[FCM] registration error:', JSON.stringify(err))
   })
 
