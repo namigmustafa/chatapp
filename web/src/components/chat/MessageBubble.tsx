@@ -8,6 +8,19 @@ interface Props {
   isOwn: boolean
 }
 
+const EMOJI_ONLY_RE = /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|‍|️|⃣|\s)+$/u
+
+function isEmojiOnly(text: string): boolean {
+  const trimmed = text.trim()
+  if (!trimmed) return false
+  const stripped = trimmed.replace(/[‍️⃣\s]/g, '')
+  return EMOJI_ONLY_RE.test(stripped)
+}
+
+function countEmoji(text: string): number {
+  return [...text.matchAll(/\p{Extended_Pictographic}|\p{Emoji_Presentation}/gu)].length
+}
+
 const callLabels: Record<string, string> = {
   call_missed: 'Missed call',
   call_ended: 'Call ended',
@@ -81,14 +94,14 @@ export default function MessageBubble({ message, isOwn }: Props) {
   const radius = isOwn ? '12px 12px 0px 12px' : '12px 12px 12px 0px'
   const tailClass = isOwn ? 'msg-tail-own' : 'msg-tail-other'
   // Row padding keeps 8px space so the tail isn't clipped by the scroll container
-  const rowClass = `flex my-0.5 ${isOwn ? 'justify-end pr-3' : 'justify-start pl-3'}`
+  const rowClass = `flex my-0.5 ${isOwn ? 'justify-end pr-4' : 'justify-start pl-4'}`
 
   if (message.type === 'image' || message.type === 'video' || message.type === 'document') {
     return (
       <div className={rowClass}>
         {/* overflow-hidden on the inner content only; outer div has the tail class */}
         <div
-          className={`${tailClass} max-w-xs lg:max-w-sm text-sm `}
+          className={`${tailClass} max-w-[72%] text-sm `}
           style={{ backgroundColor: bg, borderRadius: radius }}
         >
           <div className="overflow-hidden" style={{ borderRadius: radius }}>
@@ -145,11 +158,28 @@ export default function MessageBubble({ message, isOwn }: Props) {
     )
   }
 
+  // Emoji-only message — no bubble, just large emoji
+  if (isEmojiOnly(message.content)) {
+    const count = countEmoji(message.content)
+    const sizeClass = count === 1 ? 'text-6xl' : count <= 2 ? 'text-5xl' : count <= 4 ? 'text-4xl' : 'text-3xl'
+    return (
+      <div className={rowClass}>
+        <div className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'} gap-0.5`}>
+          <span className={`${sizeClass} leading-none select-none`}>{message.content}</span>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-white/40 whitespace-nowrap">{time}</span>
+            {isOwn && <StatusIcon status={message.status} />}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // Text message
   return (
     <div className={rowClass}>
       <div
-        className={`${tailClass} max-w-xs lg:max-w-md px-3 pt-2 pb-1.5 text-sm text-white `}
+        className={`${tailClass} max-w-[72%] px-3 pt-2 pb-1.5 text-sm text-white `}
         style={{ backgroundColor: bg, borderRadius: radius }}
       >
         {/* Invisible trailing spacer prevents last word overlapping the timestamp */}

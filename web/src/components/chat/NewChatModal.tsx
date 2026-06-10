@@ -79,7 +79,7 @@ export default function NewChatModal({ myAliasId, onConversationReady, onClose }
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start sm:items-center justify-center z-50 p-4 pt-20 sm:pt-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-sm shadow-2xl flex flex-col gap-0 overflow-hidden">

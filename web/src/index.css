@@ -4,16 +4,39 @@
   box-sizing: border-box;
 }
 
+html {
+  overscroll-behavior: none;
+  touch-action: pan-y;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, sans-serif;
   background: #0a0a0a;
   color: #f5f5f5;
+  overscroll-behavior: none;
+  overflow: hidden;
+  touch-action: pan-y;
+  max-width: 100vw;
 }
 
 #root {
-  height: 100vh;
+  height: 100dvh;
   display: flex;
+  overflow: hidden;
+  touch-action: pan-y;
+  max-width: 100vw;
+}
+
+/* Disable text selection everywhere except inputs */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+input, textarea {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* Message bubble tails */

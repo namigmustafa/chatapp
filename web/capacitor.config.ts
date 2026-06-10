@@ -12,6 +12,15 @@ const config: CapacitorConfig = {
       skipNativeAuth: true,
       providers: ['google.com', 'password'],
     },
+    StatusBar: {
+      style: 'dark',
+      backgroundColor: '#0a0a0a',
+    },
+    Keyboard: {
+      resize: 'body',
+      style: 'dark',
+      resizeOnFullScreen: true,
+    },
   },
 }
 

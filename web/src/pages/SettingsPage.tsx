@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { signOut } from '@/services/auth'
 import AliasManager from '@/components/alias/AliasManager'
+import { useSwipeBack } from '@/hooks/useSwipeBack'
 
 type Section = 'aliases' | 'account' | 'notifications'
 
@@ -124,10 +125,18 @@ export default function SettingsPage() {
   const { user } = useAuthStore()
   const [activeSection, setActiveSection] = useState<Section | null>(null)
 
+  // Swipe right from edge: if inside a section, go back to section list; else go home
+  useSwipeBack({
+    onBack: () => {
+      if (activeSection) setActiveSection(null)
+      else navigate('/', { replace: true })
+    },
+  })
+
   const handleSignOut = async () => {
     if (!confirm('Sign out?')) return
     await signOut(user?.uid)
-    navigate('/')
+    navigate('/', { replace: true })
   }
 
   const initials = (user?.displayName ?? user?.email ?? '?').slice(0, 2).toUpperCase()
@@ -141,97 +150,76 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex h-[100dvh] bg-zinc-950" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
-
-      {/* ── Left panel ──────────────────────────────────────────── */}
-      <div className={`flex flex-col w-full md:w-80 md:flex-shrink-0 border-r border-zinc-800 bg-zinc-900 ${activeSection ? 'hidden md:flex' : 'flex'}`}>
-        {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 flex-shrink-0">
-          <button onClick={() => navigate('/')} className="text-zinc-400 hover:text-white p-1 -ml-1 transition-colors">
-            <BackIcon />
-          </button>
-          <span className="font-semibold text-white">Settings</span>
-        </div>
-
-        {/* Profile */}
-        <div className="flex items-center gap-4 px-5 py-5 border-b border-zinc-800/60">
-          <div className="w-16 h-16 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-xl flex-shrink-0 ring-2 ring-zinc-700">
-            {user?.photoURL ? (
-              <img src={user.photoURL} alt="avatar" className="w-full h-full rounded-full object-cover" />
-            ) : initials}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-white font-semibold truncate">{user?.displayName ?? 'User'}</p>
-            <p className="text-zinc-400 text-sm truncate mt-0.5">{user?.email ?? ''}</p>
-          </div>
-        </div>
-
-        {/* Menu items */}
-        <div className="flex-1 overflow-y-auto py-2">
-          {MENU_ITEMS.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveSection(item.id)}
-              className={`w-full flex items-center gap-4 px-5 py-3.5 hover:bg-zinc-800/60 transition-colors text-left ${
-                activeSection === item.id ? 'bg-zinc-800/80' : ''
-              }`}
-            >
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
-                activeSection === item.id ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-400'
-              }`}>
-                {item.icon}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white">{item.label}</p>
-                <p className="text-xs text-zinc-500 mt-0.5 truncate">{item.description}</p>
-              </div>
-              <ChevronRight />
+    <div
+      className="flex flex-col h-[100dvh] w-full bg-zinc-950"
+      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
+      {activeSection ? (
+        <>
+          {/* Section header */}
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 bg-zinc-900 flex-shrink-0">
+            <button onClick={() => setActiveSection(null)} className="text-zinc-400 hover:text-white p-1 -ml-1 transition-colors">
+              <BackIcon />
             </button>
-          ))}
-
-          {/* Sign out */}
-          <button
-            onClick={handleSignOut}
-            className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-zinc-800/60 transition-colors text-left mt-2 border-t border-zinc-800"
-          >
-            <div className="w-9 h-9 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0 text-red-400">
-              <LogOutIcon />
+            <span className="font-semibold text-white">
+              {MENU_ITEMS.find((m) => m.id === activeSection)?.label}
+            </span>
+          </div>
+          {/* Section content */}
+          <div className="flex-1 overflow-y-auto">
+            {renderContent()}
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Settings list header */}
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 bg-zinc-900 flex-shrink-0">
+            <button onClick={() => navigate('/', { replace: true })} className="text-zinc-400 hover:text-white p-1 -ml-1 transition-colors">
+              <BackIcon />
+            </button>
+            <span className="font-semibold text-white">Settings</span>
+          </div>
+          {/* Profile */}
+          <div className="flex items-center gap-4 px-5 py-5 border-b border-zinc-800/60 bg-zinc-900 flex-shrink-0">
+            <div className="w-16 h-16 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-xl flex-shrink-0 ring-2 ring-zinc-700">
+              {user?.photoURL ? <img src={user.photoURL} alt="avatar" className="w-full h-full rounded-full object-cover" /> : initials}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-red-400">Sign Out</p>
-              <p className="text-xs text-zinc-500 mt-0.5">End your session</p>
+              <p className="text-white font-semibold truncate">{user?.displayName ?? 'User'}</p>
+              <p className="text-zinc-400 text-sm truncate mt-0.5">{user?.email ?? ''}</p>
             </div>
-          </button>
-        </div>
-      </div>
-
-      {/* ── Right content panel ──────────────────────────────────── */}
-      <div className={`flex-1 overflow-y-auto ${activeSection ? 'flex flex-col' : 'hidden md:flex md:flex-col'}`}>
-        {activeSection ? (
-          <>
-            {/* Mobile back button */}
-            <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-zinc-800 bg-zinc-900 flex-shrink-0">
-              <button onClick={() => setActiveSection(null)} className="text-zinc-400 hover:text-white p-1 -ml-1 transition-colors">
-                <BackIcon />
-              </button>
-              <span className="font-semibold text-white">
-                {MENU_ITEMS.find((m) => m.id === activeSection)?.label}
-              </span>
-            </div>
-            {renderContent()}
-          </>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-8">
-            <div className="w-20 h-20 rounded-full bg-zinc-800 flex items-center justify-center">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" className="text-zinc-600">
-                <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/>
-              </svg>
-            </div>
-            <p className="text-zinc-500 text-sm">Select a setting</p>
           </div>
-        )}
-      </div>
-
+          {/* Menu items */}
+          <div className="flex-1 overflow-y-auto py-2 bg-zinc-950">
+            {MENU_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setActiveSection(item.id)}
+                className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-zinc-800/60 transition-colors text-left"
+              >
+                <div className="w-9 h-9 rounded-full bg-zinc-800 text-zinc-400 flex items-center justify-center flex-shrink-0">
+                  {item.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white">{item.label}</p>
+                  <p className="text-xs text-zinc-500 mt-0.5 truncate">{item.description}</p>
+                </div>
+                <ChevronRight />
+              </button>
+            ))}
+            <button
+              onClick={handleSignOut}
+              className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-zinc-800/60 transition-colors text-left mt-2 border-t border-zinc-800"
+            >
+              <div className="w-9 h-9 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0 text-red-400"><LogOutIcon /></div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-red-400">Sign Out</p>
+                <p className="text-xs text-zinc-500 mt-0.5">End your session</p>
+              </div>
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

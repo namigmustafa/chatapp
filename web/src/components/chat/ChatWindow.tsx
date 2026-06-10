@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
+import { useSwipeBack } from '@/hooks/useSwipeBack'
 
 const EmojiPicker = lazy(() => import('@emoji-mart/react'))
 import { useAuthStore } from '@/store/authStore'
@@ -34,6 +35,7 @@ export default function ChatWindow({
 }: Props) {
   const { user } = useAuthStore()
   const { startCall } = useWebRTC()
+  useSwipeBack({ onBack: () => onBack?.(), enabled: !!onBack })
   const { sendFile } = useFileTransfer()
   const fileProgress = useFileStore((s) => s.progress)
   const [messages, setMessages] = useState<Message[]>([])
@@ -219,6 +221,8 @@ export default function ChatWindow({
       <div
         className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-1 min-h-0"
         style={{
+          touchAction: 'pan-y',
+          overscrollBehavior: 'contain',
           backgroundColor: '#0b141a',
           backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Ccircle cx='40' cy='40' r='1.5' fill='rgba(255,255,255,0.03)'/%3E%3Ccircle cx='0' cy='0' r='1.5' fill='rgba(255,255,255,0.03)'/%3E%3Ccircle cx='80' cy='0' r='1.5' fill='rgba(255,255,255,0.03)'/%3E%3Ccircle cx='0' cy='80' r='1.5' fill='rgba(255,255,255,0.03)'/%3E%3Ccircle cx='80' cy='80' r='1.5' fill='rgba(255,255,255,0.03)'/%3E%3C/svg%3E")`,
         }}
@@ -256,7 +260,7 @@ export default function ChatWindow({
             <EmojiPicker
               data={async () => (await import('@emoji-mart/data')).default}
               theme="dark"
-              locale="tr"
+              locale="en"
               onEmojiSelect={(e: { native: string }) => {
                 setText((prev) => prev + e.native)
                 inputRef.current?.focus()

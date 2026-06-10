@@ -194,7 +194,7 @@ export default function Sidebar({ activeConvId, onSelectConversation }: Props) {
       )}
 
       {/* ── Conversation list ── */}
-      <div className="flex-1 overflow-y-auto min-h-0 py-1">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 py-1">
         {filteredConversations.length === 0 && (
           <p className="text-zinc-500 text-sm text-center px-6 py-10">
             {search.trim() ? 'No results found' : 'No chats yet.'}

@@ -1,16 +1,36 @@
 import { useEffect } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { useAuthStore } from '@/store/authStore'
 import { useCallStore } from '@/store/callStore'
 import { subscribeIncomingCalls } from '@/services/webrtc'
 
-const requestNotificationPermission = () => {
-  if ('Notification' in window && Notification.permission === 'default') {
+async function requestNotificationPermission() {
+  if (Capacitor.isNativePlatform()) {
+    const { PushNotifications } = await import('@capacitor/push-notifications')
+    const { receive } = await PushNotifications.requestPermissions()
+    if (receive === 'granted') {
+      await PushNotifications.register()
+    }
+  } else if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission().catch(() => {})
   }
 }
 
-const showCallNotification = (callerName: string, callType: string) => {
-  if ('Notification' in window && Notification.permission === 'granted') {
+async function showCallNotification(callerName: string, callType: string) {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const { LocalNotifications } = await import('@capacitor/local-notifications')
+      await LocalNotifications.schedule({
+        notifications: [{
+          id: 1,
+          title: `Incoming ${callType === 'video' ? 'video' : 'voice'} call`,
+          body: callerName.toUpperCase(),
+          sound: 'default',
+          smallIcon: 'ic_launcher',
+        }]
+      })
+    } catch {}
+  } else if ('Notification' in window && Notification.permission === 'granted') {
     new Notification(`Incoming ${callType === 'video' ? 'video' : 'voice'} call`, {
       body: callerName.toUpperCase(),
       icon: '/favicon.ico',
