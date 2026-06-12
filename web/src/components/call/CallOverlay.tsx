@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { useCallStore } from '@/store/callStore'
 import { useAuthStore } from '@/store/authStore'
+import { useUIStore } from '@/store/uiStore'
 import { useWebRTC } from '@/hooks/useWebRTC'
 import AliasAvatar from '@/components/ui/AliasAvatar'
 import { startRingtone } from '@/utils/notificationSound'
+import IncomingCallBanner from './IncomingCallBanner'
 
 // ── SVG icons ──────────────────────────────────────────────────────────────
 function PhoneIcon() {
@@ -108,6 +111,7 @@ export default function CallOverlay() {
   const {
     activeCall,
     incomingCall,
+    incomingCallForeground,
     localStream,
     remoteStream,
     isMuted,
@@ -116,6 +120,7 @@ export default function CallOverlay() {
     toggleVideo,
   } = useCallStore()
   const { user } = useAuthStore()
+  const { pendingCallKitAction, setPendingCallKitAction } = useUIStore()
   const { acceptCall, declineCall, hangUp } = useWebRTC()
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -124,9 +129,21 @@ export default function CallOverlay() {
 
   const timer = useCallTimer(activeCall?.status === 'active')
 
-  // Ringtone while incoming call is showing
+  // Handle CallKit answer/decline actions from the iOS lock screen
+  useEffect(() => {
+    if (!pendingCallKitAction || !incomingCall) return
+    if (pendingCallKitAction === 'answer') {
+      acceptCall(incomingCall)
+    } else {
+      declineCall(incomingCall.id)
+    }
+    setPendingCallKitAction(null)
+  }, [pendingCallKitAction, incomingCall])
+
+  // Ringtone while incoming call is showing (not on iOS — CallKit plays its own ringtone)
   useEffect(() => {
     if (!incomingCall || activeCall) return
+    if (Capacitor.getPlatform() === 'ios') return
     const stop = startRingtone()
     return stop
   }, [!!incomingCall, !!activeCall])
@@ -167,7 +184,23 @@ export default function CallOverlay() {
 
   // ── Incoming call screen ─────────────────────────────────────────────────
   if (incomingCall && !activeCall) {
+    // On iOS, CallKit owns the incoming call UI (full-screen on lock, banner when open)
+    if (Capacitor.getPlatform() === 'ios') return null
+
     const callerName = incomingCall.callerAliasId || incomingCall.callerUserId
+
+    if (incomingCallForeground) {
+      return (
+        <IncomingCallBanner
+          callerName={callerName}
+          callType={incomingCall.type}
+          onAccept={() => acceptCall(incomingCall)}
+          onDecline={() => declineCall(incomingCall.id)}
+        />
+      )
+    }
+
+    // Full-screen overlay for calls that arrived from background
     return (
       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
         <div className="bg-zinc-900 border border-zinc-700 rounded-3xl p-8 flex flex-col items-center gap-6 w-80">

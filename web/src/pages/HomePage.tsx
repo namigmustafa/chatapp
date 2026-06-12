@@ -1,24 +1,50 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Sidebar from '@/components/layout/Sidebar'
 import ChatWindow from '@/components/chat/ChatWindow'
 import CallOverlay from '@/components/call/CallOverlay'
+import InAppToast from '@/components/ui/InAppToast'
 import { useAuthStore } from '@/store/authStore'
 import { useIncomingCalls } from '@/hooks/useIncomingCalls'
 import { usePresence } from '@/hooks/usePresence'
+import { useUIStore } from '@/store/uiStore'
+import { subscribeConversations } from '@/services/conversations'
+import type { Conversation } from '@/types'
 
 export default function HomePage() {
-  useAuthStore()
+  const { user } = useAuthStore()
   const [activeConv, setActiveConv] = useState<{
     id: string
     otherUserId: string
     otherAliasId: string
     myAliasId: string
   } | null>(null)
-  // Mobile: true = show chat panel, false = show sidebar
   const [mobileShowChat, setMobileShowChat] = useState(false)
+  const [conversations, setConversations] = useState<Conversation[]>([])
+
+  const { pendingNavConvId, setPendingNavConvId, setActiveConvId } = useUIStore()
 
   useIncomingCalls()
   usePresence()
+
+  // Subscribe to conversations for pending navigation (notification tap)
+  useEffect(() => {
+    if (!user) return
+    return subscribeConversations(user.uid, setConversations)
+  }, [user])
+
+  // Handle pending navigation from notification tap
+  useEffect(() => {
+    if (!pendingNavConvId || !user || conversations.length === 0) return
+    const conv = conversations.find((c) => c.id === pendingNavConvId)
+    if (!conv) return
+    const otherUserId = conv.participants.find((p) => p !== user.uid) ?? ''
+    const myIdx = conv.participants.indexOf(user.uid)
+    const myAliasId = conv.participantAliases[myIdx] ?? ''
+    const otherAliasId =
+      conv.participantAliases[conv.participants.indexOf(otherUserId)] ?? ''
+    handleSelectConversation(pendingNavConvId, otherUserId, otherAliasId, myAliasId)
+    setPendingNavConvId(null)
+  }, [pendingNavConvId, conversations, user])
 
   const handleSelectConversation = (
     convId: string,
@@ -28,18 +54,23 @@ export default function HomePage() {
   ) => {
     setActiveConv({ id: convId, otherUserId, otherAliasId, myAliasId })
     setMobileShowChat(true)
+    setActiveConvId(convId)
   }
 
   const handleBack = () => {
     setMobileShowChat(false)
+    setActiveConvId(null)
   }
 
   const showSidebar = !mobileShowChat
   const showMain = mobileShowChat
 
+  // On mobile sidebar view: pass null so ALL unread conversations show the dot
+  // On mobile chat view or desktop: pass the active conv id
+  const sidebarActiveConvId = mobileShowChat ? (activeConv?.id ?? null) : null
+
   return (
-    <div className="flex h-[100dvh] w-full bg-zinc-950 overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
-      {/* Sidebar — full screen on mobile, fixed width on desktop */}
+    <div className="flex h-[100dvh] w-full bg-zinc-950 overflow-hidden">
       <div
         className={`
           ${showSidebar ? 'flex' : 'hidden'} md:flex
@@ -48,12 +79,11 @@ export default function HomePage() {
         `}
       >
         <Sidebar
-          activeConvId={activeConv?.id ?? null}
+          activeConvId={sidebarActiveConvId}
           onSelectConversation={handleSelectConversation}
         />
       </div>
 
-      {/* Main panel — full screen on mobile, flex-1 on desktop */}
       <main
         className={`
           ${showMain ? 'flex' : 'hidden'} md:flex
@@ -81,6 +111,15 @@ export default function HomePage() {
       </main>
 
       <CallOverlay />
+      <InAppToast onTap={(convId) => {
+        const conv = conversations.find((c) => c.id === convId)
+        if (!conv || !user) return
+        const otherUserId = conv.participants.find((p) => p !== user.uid) ?? ''
+        const myIdx = conv.participants.indexOf(user.uid)
+        const myAliasId = conv.participantAliases[myIdx] ?? ''
+        const otherAliasId = conv.participantAliases[conv.participants.indexOf(otherUserId)] ?? ''
+        handleSelectConversation(convId, otherUserId, otherAliasId, myAliasId)
+      }} />
     </div>
   )
 }

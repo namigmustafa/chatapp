@@ -194,7 +194,7 @@ export default function Sidebar({ activeConvId, onSelectConversation }: Props) {
       )}
 
       {/* ── Conversation list ── */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 py-1">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 py-1" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {filteredConversations.length === 0 && (
           <p className="text-zinc-500 text-sm text-center px-6 py-10">
             {search.trim() ? 'No results found' : 'No chats yet.'}
@@ -263,6 +263,12 @@ export default function Sidebar({ activeConvId, onSelectConversation }: Props) {
                     {conv.lastMessage
                       ? conv.lastMessage.type === 'text'
                         ? conv.lastMessage.content
+                        : conv.lastMessage.type === 'call_missed'
+                        ? '📞 Missed call'
+                        : conv.lastMessage.type === 'call_ended'
+                        ? '📞 Call ended'
+                        : conv.lastMessage.type === 'call_rejected'
+                        ? '📞 Call declined'
                         : '📞 Call'
                       : myAliasId
                       ? `@${myAliasId} → @${otherAliasId}`

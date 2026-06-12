@@ -4,8 +4,6 @@ import { useSwipeBack } from '@/hooks/useSwipeBack'
 const EmojiPicker = lazy(() => import('@emoji-mart/react'))
 import { useAuthStore } from '@/store/authStore'
 import { sendMessage, subscribeMessages, markMessageRead } from '@/services/messages'
-import { useFileTransfer } from '@/hooks/useFileTransfer'
-import { useFileStore } from '@/store/fileStore'
 import { setTyping, subscribeConversationTyping, markConversationRead } from '@/services/conversations'
 import { subscribePresence } from '@/services/presence'
 import type { Message } from '@/types'
@@ -36,8 +34,6 @@ export default function ChatWindow({
   const { user } = useAuthStore()
   const { startCall } = useWebRTC()
   useSwipeBack({ onBack: () => onBack?.(), enabled: !!onBack })
-  const { sendFile } = useFileTransfer()
-  const fileProgress = useFileStore((s) => s.progress)
   const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState('')
   const [otherIsTyping, setOtherIsTyping] = useState(false)
@@ -46,7 +42,6 @@ export default function ChatWindow({
   const [otherAlias, setOtherAlias] = useState<Alias | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const knownIdsRef = useRef<Set<string> | null>(null)
 
@@ -119,13 +114,6 @@ export default function ChatWindow({
     [conversationId, user]
   )
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !user) return
-    e.target.value = ''
-    sendFile(conversationId, otherUserId, file).catch(console.error)
-  }
-
   const aliasStatus = otherAlias && user ? getAliasStatus(otherAlias, user.uid) : null
   const canMessage = !aliasStatus || aliasStatus.reachable
 
@@ -142,7 +130,7 @@ export default function ChatWindow({
   return (
     <div className="relative flex flex-col h-full overflow-hidden">
       {/* ── Header ── */}
-      <div className="flex items-center gap-3 px-3 py-2.5 border-b border-zinc-800 bg-zinc-900 flex-shrink-0">
+      <div className="flex items-center gap-3 px-3 border-b border-zinc-800 bg-zinc-900 flex-shrink-0" style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top))', paddingBottom: '0.625rem' }}>
         {onBack && (
           <button
             onClick={onBack}
@@ -237,22 +225,6 @@ export default function ChatWindow({
         <div ref={bottomRef} />
       </div>
 
-      {Object.values(fileProgress).length > 0 && (
-        <div className="px-4 py-2 bg-zinc-900 border-t border-zinc-800 flex-shrink-0">
-          {Object.entries(fileProgress).map(([tid, pct]) => (
-            <div key={tid} className="flex items-center gap-3">
-              <div className="flex-1 bg-zinc-700 rounded-full h-1.5">
-                <div
-                  className="bg-indigo-500 h-1.5 rounded-full transition-all"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <span className="text-xs text-zinc-400 flex-shrink-0">{pct}%</span>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Emoji picker */}
       {showEmoji && (
         <div className="absolute bottom-16 left-2 z-20 shadow-2xl rounded-2xl overflow-hidden">
@@ -313,26 +285,6 @@ export default function ChatWindow({
         className="flex items-center gap-1.5 px-3 py-2.5 border-t border-zinc-800 bg-zinc-900 flex-shrink-0"
         style={{ paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom))' }}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          className="hidden"
-          accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar"
-          onChange={handleFile}
-        />
-
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={Object.keys(fileProgress).length > 0}
-          title="Attach file"
-          className="flex-shrink-0 p-2 rounded-full text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors disabled:opacity-40"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
-          </svg>
-        </button>
-
         <button
           type="button"
           onClick={() => setShowEmoji((v) => !v)}

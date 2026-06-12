@@ -4,13 +4,14 @@ import type { Call } from '@/types'
 interface CallState {
   activeCall: Call | null
   incomingCall: Call | null
+  incomingCallForeground: boolean
   localStream: MediaStream | null
   remoteStream: MediaStream | null
   peerConnection: RTCPeerConnection | null
   isMuted: boolean
   isVideoOff: boolean
   setActiveCall: (call: Call | null) => void
-  setIncomingCall: (call: Call | null) => void
+  setIncomingCall: (call: Call | null, foreground?: boolean) => void
   setLocalStream: (stream: MediaStream | null) => void
   setRemoteStream: (stream: MediaStream | null) => void
   setPeerConnection: (pc: RTCPeerConnection | null) => void
@@ -22,13 +23,14 @@ interface CallState {
 export const useCallStore = create<CallState>((set, get) => ({
   activeCall: null,
   incomingCall: null,
+  incomingCallForeground: true,
   localStream: null,
   remoteStream: null,
   peerConnection: null,
   isMuted: false,
   isVideoOff: false,
   setActiveCall: (call) => set({ activeCall: call }),
-  setIncomingCall: (call) => set({ incomingCall: call }),
+  setIncomingCall: (call, foreground = true) => set({ incomingCall: call, incomingCallForeground: foreground }),
   setLocalStream: (stream) => set({ localStream: stream }),
   setRemoteStream: (stream) => set({ remoteStream: stream }),
   setPeerConnection: (pc) => set({ peerConnection: pc }),
@@ -49,6 +51,7 @@ export const useCallStore = create<CallState>((set, get) => ({
     set({
       activeCall: null,
       incomingCall: null,
+      incomingCallForeground: true,
       localStream: null,
       remoteStream: null,
       peerConnection: null,
@@ -57,4 +60,3 @@ export const useCallStore = create<CallState>((set, get) => ({
     })
   },
 }))
-

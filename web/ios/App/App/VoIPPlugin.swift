@@ -1,0 +1,90 @@
+import Capacitor
+import Foundation
+import UIKit
+
+@objc(VoIPPlugin)
+public class VoIPPlugin: CAPPlugin {
+
+    public override func load() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(onVoIPToken(_:)),
+            name: Notification.Name("VoIPTokenReceived"),
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(onCallReceived(_:)),
+            name: Notification.Name("VoIPCallReceived"),
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(onCallAnswered(_:)),
+            name: Notification.Name("VoIPCallAnswered"),
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(onCallEnded(_:)),
+            name: Notification.Name("VoIPCallEnded"),
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // Returns current VoIP token, plus any pending call that arrived before JS was ready
+    @objc func register(_ call: CAPPluginCall) {
+        var result: [String: Any] = [:]
+
+        if let token = UserDefaults.standard.string(forKey: "voip_push_token") {
+            result["token"] = token
+        }
+
+        // Return and clear any call that arrived while JS was not yet running
+        if let pending = UserDefaults.standard.dictionary(forKey: "voip_pending_call") {
+            result["pendingCall"] = pending
+            UserDefaults.standard.removeObject(forKey: "voip_pending_call")
+        }
+
+        call.resolve(result)
+    }
+
+    @objc func endCall(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            (UIApplication.shared.delegate as? AppDelegate)?.endCallKitCall()
+        }
+        call.resolve()
+    }
+
+    // MARK: - NSNotification → JS events
+
+    @objc private func onVoIPToken(_ notification: Notification) {
+        guard let token = notification.userInfo?["token"] as? String else { return }
+        notifyListeners("registration", data: ["token": token])
+    }
+
+    @objc private func onCallReceived(_ notification: Notification) {
+        notifyListeners("callReceived", data: stringDict(notification.userInfo))
+    }
+
+    @objc private func onCallAnswered(_ notification: Notification) {
+        notifyListeners("callAnswered", data: stringDict(notification.userInfo))
+    }
+
+    @objc private func onCallEnded(_ notification: Notification) {
+        notifyListeners("callEnded", data: stringDict(notification.userInfo))
+    }
+
+    private func stringDict(_ userInfo: [AnyHashable: Any]?) -> [String: Any] {
+        guard let info = userInfo else { return [:] }
+        var result: [String: Any] = [:]
+        for (key, value) in info {
+            if let k = key as? String { result[k] = value }
+        }
+        return result
+    }
+}

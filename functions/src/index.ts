@@ -1,8 +1,40 @@
 import * as admin from 'firebase-admin'
 import { onDocumentCreated } from 'firebase-functions/v2/firestore'
 import { FieldValue } from 'firebase-admin/firestore'
+import { defineSecret } from 'firebase-functions/params'
+import * as apn from '@parse/node-apn'
 
 admin.initializeApp()
+
+// APNs credentials — set via: firebase functions:secrets:set APNS_PRIVATE_KEY
+const APNS_PRIVATE_KEY = defineSecret('APNS_PRIVATE_KEY')
+const APNS_KEY_ID      = defineSecret('APNS_KEY_ID')
+const APNS_TEAM_ID     = defineSecret('APNS_TEAM_ID')
+
+const BUNDLE_ID = 'app.chatapp.p2p'
+
+async function sendVoIPPush(
+  voipToken: string,
+  payload: Record<string, string>,
+  privateKey: string,
+  keyId: string,
+  teamId: string
+): Promise<void> {
+  const provider = new apn.Provider({
+    token: { key: privateKey, keyId, teamId },
+    production: true,
+  })
+  try {
+    const note = new apn.Notification()
+    note.topic = `${BUNDLE_ID}.voip`
+    note.pushType = 'voip'
+    note.priority = 10
+    note.payload = payload
+    await provider.send(note, voipToken)
+  } finally {
+    provider.shutdown()
+  }
+}
 
 const db = admin.firestore()
 const messaging = admin.messaging()
@@ -29,66 +61,88 @@ async function pruneExpiredTokens(
   }
 }
 
-// Gelen arama — push notification gönder
-export const onCallCreated = onDocumentCreated('calls/{callId}', async (event) => {
-  const call = event.data?.data()
-  if (!call || call.status !== 'ringing') return
+// Gelen arama — FCM push (Android + web) + VoIP push (iOS)
+export const onCallCreated = onDocumentCreated(
+  { document: 'calls/{callId}', secrets: [APNS_PRIVATE_KEY, APNS_KEY_ID, APNS_TEAM_ID] },
+  async (event) => {
+    const call = event.data?.data()
+    if (!call || call.status !== 'ringing') return
 
-  const tokenDoc = await db.doc(`fcmTokens/${call.calleeUserId}`).get()
-  if (!tokenDoc.exists) return
-  const tokenData = tokenDoc.data()!
-  const tokens = getTokens(tokenData)
-  if (tokens.length === 0) return
+    // Get caller alias name
+    let callerName = 'Someone'
+    if (call.callerAliasId) {
+      const aliasSnap = await db.doc(`aliases/${call.callerAliasId}`).get()
+      if (aliasSnap.exists) callerName = `@${aliasSnap.data()!.name}`
+    }
 
-  // Get caller's alias name from the call doc (callerAliasId field)
-  let callerName = 'Someone'
-  if (call.callerAliasId) {
-    const aliasSnap = await db.doc(`aliases/${call.callerAliasId}`).get()
-    if (aliasSnap.exists) callerName = `@${aliasSnap.data()!.name}`
-  }
+    const callId  = event.params.callId
+    const title   = call.type === 'video' ? 'Incoming Video Call' : 'Incoming Voice Call'
+    const body    = `${callerName} is calling you`
 
-  const title = call.type === 'video' ? 'Incoming Video Call' : 'Incoming Voice Call'
-  const body = `${callerName} is calling you`
+    // ── iOS VoIP push via APNs (wakes app from killed state, shows CallKit UI) ──
+    const voipDoc = await db.doc(`voipTokens/${call.calleeUserId}`).get()
+    if (voipDoc.exists) {
+      const voipToken = voipDoc.data()?.ios as string | undefined
+      if (voipToken) {
+        const pk = APNS_PRIVATE_KEY.value()
+        const ki = APNS_KEY_ID.value()
+        const ti = APNS_TEAM_ID.value()
+        if (pk && ki && ti) {
+          await sendVoIPPush(
+            voipToken,
+            { callId, callType: call.type, callerName, callerUserId: call.callerUserId },
+            pk, ki, ti
+          ).catch((err: unknown) => console.error('[VoIP push] error:', err))
+        }
+      }
+    }
 
-  const result = await messaging.sendEachForMulticast({
-    tokens,
-    notification: { title, body },
-    data: {
-      type: 'incoming_call',
-      callId: event.params.callId,
-      callType: call.type,
-      callerUserId: call.callerUserId,
-    },
-    apns: {
-      payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } },
-    },
-    android: {
-      notification: { sound: 'default', channelId: 'calls', priority: 'high' },
-      priority: 'high',
-    },
-    webpush: {
-      fcmOptions: { link: '/' },
-      notification: {
-        icon: '/favicon.svg',
-        requireInteraction: true,
-        actions: [
-          { action: 'answer', title: 'Answer' },
-          { action: 'reject', title: 'Decline' },
-        ],
+    // ── FCM push (Android + web fallback) ──
+    const tokenDoc = await db.doc(`fcmTokens/${call.calleeUserId}`).get()
+    if (!tokenDoc.exists) return
+    const tokenData = tokenDoc.data()!
+    const tokens = getTokens(tokenData)
+    if (tokens.length === 0) return
+
+    const result = await messaging.sendEachForMulticast({
+      tokens,
+      notification: { title, body },
+      data: {
+        type: 'incoming_call',
+        callId,
+        callType: call.type,
+        callerUserId: call.callerUserId,
       },
-    },
-  })
+      apns: {
+        payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } },
+      },
+      android: {
+        notification: { sound: 'default', channelId: 'calls', priority: 'high' },
+        priority: 'high',
+      },
+      webpush: {
+        fcmOptions: { link: '/' },
+        notification: {
+          icon: '/favicon.svg',
+          requireInteraction: true,
+          actions: [
+            { action: 'answer', title: 'Answer' },
+            { action: 'reject', title: 'Decline' },
+          ],
+        },
+      },
+    })
 
-  // Clean up expired tokens
-  const failed = new Set<string>()
-  result.responses.forEach((r, i) => {
-    if (!r.success && (
-      r.error?.code === 'messaging/registration-token-not-registered' ||
-      r.error?.code === 'messaging/invalid-registration-token'
-    )) failed.add(tokens[i])
-  })
-  if (failed.size > 0) await pruneExpiredTokens(call.calleeUserId, tokenData, failed)
-})
+    const failed = new Set<string>()
+    result.responses.forEach((r, i) => {
+      if (!r.success && (
+        r.error?.code === 'messaging/registration-token-not-registered' ||
+        r.error?.code === 'messaging/invalid-registration-token'
+      )) failed.add(tokens[i])
+    })
+    if (failed.size > 0) await pruneExpiredTokens(call.calleeUserId, tokenData, failed)
+  }
+)
 
 // Yeni mesaj — push notification gönder
 export const onMessageCreated = onDocumentCreated('messages/{msgId}', async (event) => {

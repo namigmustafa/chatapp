@@ -150,14 +150,11 @@ export default function SettingsPage() {
   }
 
   return (
-    <div
-      className="flex flex-col h-[100dvh] w-full bg-zinc-950"
-      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
-    >
+    <div className="flex flex-col h-[100dvh] w-full bg-zinc-950">
       {activeSection ? (
         <>
           {/* Section header */}
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 bg-zinc-900 flex-shrink-0">
+          <div className="flex items-center gap-3 px-4 border-b border-zinc-800 bg-zinc-900 flex-shrink-0" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))', paddingBottom: '0.75rem' }}>
             <button onClick={() => setActiveSection(null)} className="text-zinc-400 hover:text-white p-1 -ml-1 transition-colors">
               <BackIcon />
             </button>
@@ -166,14 +163,14 @@ export default function SettingsPage() {
             </span>
           </div>
           {/* Section content */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
             {renderContent()}
           </div>
         </>
       ) : (
         <>
           {/* Settings list header */}
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 bg-zinc-900 flex-shrink-0">
+          <div className="flex items-center gap-3 px-4 border-b border-zinc-800 bg-zinc-900 flex-shrink-0" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))', paddingBottom: '0.75rem' }}>
             <button onClick={() => navigate('/', { replace: true })} className="text-zinc-400 hover:text-white p-1 -ml-1 transition-colors">
               <BackIcon />
             </button>
@@ -190,7 +187,7 @@ export default function SettingsPage() {
             </div>
           </div>
           {/* Menu items */}
-          <div className="flex-1 overflow-y-auto py-2 bg-zinc-950">
+          <div className="flex-1 overflow-y-auto py-2 bg-zinc-950" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
             {MENU_ITEMS.map((item) => (
               <button
                 key={item.id}
