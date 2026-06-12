@@ -13,7 +13,7 @@ const config: CapacitorConfig = {
       providers: ['google.com', 'password'],
     },
     FirebaseMessaging: {
-      presentationOptions: ['badge', 'sound'],
+      presentationOptions: ['badge'],
     },
     StatusBar: {
       style: 'dark',

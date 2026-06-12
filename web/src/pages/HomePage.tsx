@@ -47,8 +47,7 @@ export default function HomePage() {
       return
     }
 
-    // Subscription not loaded yet — fetch directly so we don't miss cold-start taps
-    if (conversations.length > 0) return
+    // Conv not in loaded list yet — fetch directly (handles cold-start and slow subscriptions)
     const convId = pendingNavConvId
     ;(async () => {
       try {
@@ -102,6 +101,7 @@ export default function HomePage() {
       >
         <Sidebar
           activeConvId={sidebarActiveConvId}
+          conversations={conversations}
           onSelectConversation={handleSelectConversation}
         />
       </div>

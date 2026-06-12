@@ -19,6 +19,7 @@ export const useWebRTC = () => {
   const { user } = useAuthStore()
   const {
     setActiveCall,
+    setIncomingCall,
     setLocalStream,
     setRemoteStream,
     setPeerConnection,
@@ -166,6 +167,7 @@ export const useWebRTC = () => {
       await pc.setLocalDescription(answer)
 
       await answerCall(call.id, answer)
+      setIncomingCall(null)
       setActiveCall({ ...call, status: 'active' })
 
       const unsubIce = subscribeIceCandidates(call.id, 'caller', (ice) => {
@@ -182,7 +184,7 @@ export const useWebRTC = () => {
 
       unsubscribeRef.current.push(unsubIce, unsubCall)
     },
-    [setLocalStream, setRemoteStream, setPeerConnection, setActiveCall, cleanup]
+    [setIncomingCall, setLocalStream, setRemoteStream, setPeerConnection, setActiveCall, cleanup]
   )
 
   const declineCall = useCallback(async (callId: string) => {

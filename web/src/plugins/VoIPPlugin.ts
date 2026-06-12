@@ -11,6 +11,7 @@ export interface VoIPCallInfo {
 export interface VoIPRegistrationResult {
   token?: string
   pendingCall?: VoIPCallInfo
+  pendingAnswer?: boolean
 }
 
 export interface VoIPPluginDefinition {

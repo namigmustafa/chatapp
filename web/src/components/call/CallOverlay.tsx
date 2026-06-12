@@ -184,12 +184,12 @@ export default function CallOverlay() {
 
   // ── Incoming call screen ─────────────────────────────────────────────────
   if (incomingCall && !activeCall) {
-    // On iOS, CallKit owns the incoming call UI (full-screen on lock, banner when open)
-    if (Capacitor.getPlatform() === 'ios') return null
-
     const callerName = incomingCall.callerAliasId || incomingCall.callerUserId
+    const isIOS = Capacitor.getPlatform() === 'ios'
 
-    if (incomingCallForeground) {
+    // Show compact banner only on non-iOS when app is already in foreground.
+    // On iOS we always use our own full-screen overlay (CallKit handles background/lock natively).
+    if (!isIOS && incomingCallForeground) {
       return (
         <IncomingCallBanner
           callerName={callerName}
@@ -200,7 +200,7 @@ export default function CallOverlay() {
       )
     }
 
-    // Full-screen overlay for calls that arrived from background
+    // Full-screen overlay
     return (
       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
         <div className="bg-zinc-900 border border-zinc-700 rounded-3xl p-8 flex flex-col items-center gap-6 w-80">

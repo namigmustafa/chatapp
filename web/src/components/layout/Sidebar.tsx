@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
-import { subscribeConversations } from '@/services/conversations'
 import { getConversationText } from '@/services/messages'
 import { getUserAliases } from '@/services/aliases'
 import { signOut } from '@/services/auth'
@@ -14,13 +13,13 @@ import { enUS } from 'date-fns/locale'
 
 interface Props {
   activeConvId: string | null
+  conversations: Conversation[]
   onSelectConversation: (convId: string, otherUserId: string, otherAliasId: string, myAliasId: string) => void
 }
 
-export default function Sidebar({ activeConvId, onSelectConversation }: Props) {
+export default function Sidebar({ activeConvId, conversations, onSelectConversation }: Props) {
   const { user } = useAuthStore()
   const navigate = useNavigate()
-  const [conversations, setConversations] = useState<Conversation[]>([])
   const [myAliases, setMyAliases] = useState<Alias[]>([])
   const [showNewChat, setShowNewChat] = useState(false)
   const [onlineMap, setOnlineMap] = useState<Record<string, boolean>>({})
@@ -32,9 +31,7 @@ export default function Sidebar({ activeConvId, onSelectConversation }: Props) {
 
   useEffect(() => {
     if (!user) return
-    const unsub = subscribeConversations(user.uid, setConversations)
     getUserAliases(user.uid).then(setMyAliases)
-    return unsub
   }, [user])
 
   useEffect(() => {

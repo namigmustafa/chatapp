@@ -50,6 +50,12 @@ public class VoIPPlugin: CAPPlugin {
             UserDefaults.standard.removeObject(forKey: "voip_pending_call")
         }
 
+        // Return and clear the answered flag (user answered from CallKit before JS was ready)
+        if UserDefaults.standard.bool(forKey: "voip_call_answered") {
+            result["pendingAnswer"] = true
+            UserDefaults.standard.removeObject(forKey: "voip_call_answered")
+        }
+
         call.resolve(result)
     }
 

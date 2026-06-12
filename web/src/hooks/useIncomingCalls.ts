@@ -4,6 +4,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useCallStore } from '@/store/callStore'
 import { useUIStore } from '@/store/uiStore'
 import { subscribeIncomingCalls } from '@/services/webrtc'
+import { playMessageSound } from '@/utils/notificationSound'
 
 async function registerPushToken(userId: string) {
   if (!Capacitor.isNativePlatform()) {
@@ -92,6 +93,8 @@ export const useIncomingCalls = () => {
   const { setIncomingCall, activeCall, incomingCall } = useCallStore()
   const { setPendingNavConvId, setCallFromBackground, setToast, setPendingCallKitAction } = useUIStore()
   const prevActiveCallRef = useRef(activeCall)
+  const activeCallRef = useRef(activeCall)
+  activeCallRef.current = activeCall
 
   // Register push tokens (FCM for all platforms, VoIP for iOS)
   useEffect(() => {
@@ -106,11 +109,13 @@ export const useIncomingCalls = () => {
 
           if (result.token) await storeVoIPToken(user.uid!, result.token)
 
-          // Handle call that arrived while app was killed
-          if (result.pendingCall) {
-            // The Firestore subscription will pick up the call; nothing extra needed here.
-            // Just ensure CallKit UI is shown (AppDelegate already called reportNewIncomingCall).
+          // User answered a call from the CallKit UI before JS was ready
+          if (result.pendingAnswer) {
+            setPendingCallKitAction('answer')
           }
+
+          // Call arrived while app was killed — Firestore subscription will surface it.
+          // pendingAnswer above handles the case where user already swiped to answer.
         } catch {}
       })()
     }
@@ -139,9 +144,12 @@ export const useIncomingCalls = () => {
         })
         removers.push(() => answerListener.remove())
 
-        // User declined/ended from CallKit UI
+        // User declined/ended from CallKit UI — guard: don't set stale decline
+        // when dismissCallKit fires CXEndCallAction after an already-completed call.
         const endListener = await VoIPPlugin.addListener('callEnded', () => {
-          setPendingCallKitAction('decline')
+          if (useCallStore.getState().incomingCall) {
+            setPendingCallKitAction('decline')
+          }
         })
         removers.push(() => endListener.remove())
       } catch {}
@@ -150,10 +158,11 @@ export const useIncomingCalls = () => {
     return () => removers.forEach((fn) => fn())
   }, [user?.uid])
 
-  // Cancel local call notification when call is handled (accepted/declined/ended)
-  // Also dismiss CallKit if the call was handled from JS side
+  // Cancel local call notification when call is declined/missed (not when accepted)
+  // dismissCallKit only when no active call — acceptCall clears incomingCall while activeCall
+  // is still live, so we must not end CallKit in that path.
   useEffect(() => {
-    if (!incomingCall) {
+    if (!incomingCall && !activeCallRef.current) {
       cancelCallNotification()
       dismissCallKit()
     }
@@ -179,6 +188,7 @@ export const useIncomingCalls = () => {
       const { FirebaseMessaging } = await import('@capacitor-firebase/messaging')
 
       // Notification tap: app was background, user tapped notification
+      // (Capacitor queues this event, so cold-start taps are also delivered here)
       const tapListener = await FirebaseMessaging.addListener(
         'notificationActionPerformed',
         async (event) => {
@@ -188,7 +198,6 @@ export const useIncomingCalls = () => {
           await cancelCallNotification()
 
           if (data.type === 'incoming_call') {
-            // Signal that this call opened from background → show full-screen
             setCallFromBackground(true)
           } else if (data.type === 'new_message' && data.conversationId) {
             setPendingNavConvId(data.conversationId)
@@ -197,7 +206,8 @@ export const useIncomingCalls = () => {
       )
       removeListeners.push(() => tapListener.remove())
 
-      // Foreground message: app is open, FCM delivers silently
+      // Foreground message: app is open, FCM delivers silently (no system banner/sound
+      // because presentationOptions excludes 'alert' and 'sound').
       const fgListener = await FirebaseMessaging.addListener(
         'notificationReceived',
         (event) => {
@@ -207,11 +217,12 @@ export const useIncomingCalls = () => {
           const convId = data.conversationId
           if (!convId) return
 
-          // Both users in same chat → suppress
+          // Active conversation → suppress entirely
           const { activeConvId } = useUIStore.getState()
           if (convId === activeConvId) return
 
-          // Different conversation → show in-app toast
+          // Different conversation → play sound + show in-app toast
+          playMessageSound()
           const title = event.notification.title ?? 'New message'
           const body = event.notification.body ?? ''
           setToast({ id: `${convId}-${Date.now()}`, title, body, convId })

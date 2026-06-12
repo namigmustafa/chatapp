@@ -98,6 +98,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
                 print("[VoIP] reportNewIncomingCall error: \(error.localizedDescription)")
             }
             completion()
+
+            // When app is foreground, dismiss CallKit immediately — our in-app UI handles it.
+            // Must be on main thread; done after completion() so Apple's requirement is satisfied.
+            DispatchQueue.main.async {
+                if UIApplication.shared.applicationState == .active {
+                    self.callProvider?.reportCall(with: callUUID, endedAt: Date(), reason: .answeredElsewhere)
+                    self.activeCallUUID = nil
+                }
+            }
         }
 
         // Notify VoIPPlugin (JS bridge) — works when app is already running
@@ -118,6 +127,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
         try? session.setActive(true)
+        // Persist the answered flag so JS can retrieve it if the app was not yet ready
+        UserDefaults.standard.set(true, forKey: "voip_call_answered")
         NotificationCenter.default.post(
             name: Notification.Name("VoIPCallAnswered"),
             object: nil,
