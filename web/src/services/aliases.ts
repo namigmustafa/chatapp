@@ -139,9 +139,9 @@ function formatScheduleInfo(days: number[], startTime: string, endTime: string):
 
 export const getAliasStatus = (alias: Alias, callerUserId: string): AliasStatus => {
   if (!alias.isActive) return { reachable: false, reason: 'inactive' }
-  if (alias.blockedUsers.includes(callerUserId)) return { reachable: false, reason: 'blocked' }
+  if ((alias.blockedUsers ?? []).includes(callerUserId)) return { reachable: false, reason: 'blocked' }
 
-  if (alias.schedule.enabled) {
+  if (alias.schedule?.enabled) {
     const now = new Date()
     const tz = alias.schedule.timezone
     const parts = new Intl.DateTimeFormat('en-GB', {

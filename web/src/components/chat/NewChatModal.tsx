@@ -62,19 +62,23 @@ export default function NewChatModal({ myAliasId, onConversationReady, onClose }
 
   const handleSelect = async (alias: Alias) => {
     if (!user) return
-    const status = getAliasStatus(alias, user.uid)
-    if (!status.reachable) {
-      setErrorStatus({
-        reason: status.reason,
-        aliasName: alias.id,
-        scheduleInfo: 'scheduleInfo' in status ? status.scheduleInfo : undefined,
-      })
-      return
+    try {
+      const status = getAliasStatus(alias, user.uid)
+      if (!status.reachable) {
+        setErrorStatus({
+          reason: status.reason,
+          aliasName: alias.id,
+          scheduleInfo: 'scheduleInfo' in status ? status.scheduleInfo : undefined,
+        })
+        return
+      }
+      setErrorStatus(null)
+      const convId = await getOrCreateConversation(user.uid, myAliasId, alias.userId, alias.id)
+      onConversationReady(convId, alias.userId, alias.id, myAliasId)
+      onClose()
+    } catch (err) {
+      console.error('[NewChat] handleSelect failed:', err)
     }
-    setErrorStatus(null)
-    const convId = await getOrCreateConversation(user.uid, myAliasId, alias.userId, alias.id)
-    onConversationReady(convId, alias.userId, alias.id, myAliasId)
-    onClose()
   }
 
   return (
