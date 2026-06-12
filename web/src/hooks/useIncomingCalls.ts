@@ -93,12 +93,6 @@ export const useIncomingCalls = () => {
   const { setPendingNavConvId, setCallFromBackground, setToast, setPendingCallKitAction } = useUIStore()
   const prevActiveCallRef = useRef(activeCall)
 
-  // Clear any delivered notifications immediately when user becomes active
-  useEffect(() => {
-    if (!user?.uid) return
-    clearDeliveredNotifications()
-  }, [user?.uid])
-
   // Register push tokens (FCM for all platforms, VoIP for iOS)
   useEffect(() => {
     if (!user?.uid) return

@@ -12,9 +12,12 @@ const config: CapacitorConfig = {
       skipNativeAuth: true,
       providers: ['google.com', 'password'],
     },
+    FirebaseMessaging: {
+      presentationOptions: ['badge', 'sound', 'alert'],
+    },
     StatusBar: {
       style: 'dark',
-      backgroundColor: '#0a0a0a',
+      overlaysWebView: true,
     },
     Keyboard: {
       resize: 'body',
