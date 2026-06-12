@@ -4,6 +4,7 @@ web/node_modules/
 
 # Build output
 web/dist/
+functions/lib/
 
 # Android build artifacts (keep source, ignore generated)
 web/android/.gradle/
