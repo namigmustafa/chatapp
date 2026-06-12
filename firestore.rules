@@ -22,7 +22,8 @@ service cloud.firestore {
     // Recipient alias must be active and must not have blocked the sender
     function canSendMessage(convId) {
       let alias = recipientAlias(convId);
-      return alias.isActive == true && !(request.auth.uid in alias.blockedUsers);
+      return alias.isActive == true &&
+        (alias.blockedUsers == null || !(request.auth.uid in alias.blockedUsers));
     }
 
     // Users — sadece kendi profilini okuyabilir/yazabilir
@@ -40,7 +41,12 @@ service cloud.firestore {
 
     // Conversations — sadece katılımcılar erişebilir
     match /conversations/{convId} {
-      allow read, write: if isAuthenticated() &&
+      // resource == null → document doesn't exist yet (getDoc for getOrCreate check)
+      allow read: if isAuthenticated() && (
+        resource == null ||
+        request.auth.uid in resource.data.participants
+      );
+      allow write: if isAuthenticated() &&
         request.auth.uid in resource.data.participants;
       allow create: if isAuthenticated() &&
         request.auth.uid in request.resource.data.participants;
@@ -81,6 +87,11 @@ service cloud.firestore {
 
     // FCM tokens
     match /fcmTokens/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // VoIP push tokens (iOS CallKit)
+    match /voipTokens/{userId} {
       allow read, write: if isOwner(userId);
     }
 
