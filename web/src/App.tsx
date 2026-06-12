@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { onAuthChange, handleGoogleRedirect } from '@/services/auth'
 import { useAuthStore } from '@/store/authStore'
+import { useUIStore } from '@/store/uiStore'
 import { useFileTransferReceiver } from '@/hooks/useFileTransferReceiver'
 import { registerFcmToken } from '@/services/fcm'
 import LoginPage from '@/pages/LoginPage'
@@ -26,6 +27,38 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 
 function AppInner() {
   useFileTransferReceiver()
+
+  // Register notification tap listener as early as possible — before auth resolves.
+  // ProtectedRoute shows "Loading..." until auth is ready, so placing this inside
+  // HomePage (behind the auth gate) means the listener registers too late and the
+  // cold-start buffered event is never consumed.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+    let remove: (() => void) | null = null
+    ;(async () => {
+      const { FirebaseMessaging } = await import('@capacitor-firebase/messaging')
+      const listener = await FirebaseMessaging.addListener(
+        'notificationActionPerformed',
+        async (event) => {
+          const data = (event.notification.data ?? {}) as Record<string, string>
+
+          // Clear badge + delivered notifications when user taps any notification
+          try {
+            await FirebaseMessaging.removeAllDeliveredNotifications()
+          } catch {}
+
+          if (data.type === 'new_message' && data.conversationId) {
+            useUIStore.getState().setPendingNavConvId(data.conversationId)
+          } else if (data.type === 'incoming_call') {
+            useUIStore.getState().setCallFromBackground(true)
+          }
+        }
+      )
+      remove = () => listener.remove()
+    })()
+    return () => { remove?.() }
+  }, [])
+
   return null
 }
 

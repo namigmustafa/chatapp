@@ -91,7 +91,7 @@ async function showCallNotification(callerName: string, callType: string) {
 export const useIncomingCalls = () => {
   const { user } = useAuthStore()
   const { setIncomingCall, activeCall, incomingCall } = useCallStore()
-  const { setPendingNavConvId, setCallFromBackground, setToast, setPendingCallKitAction } = useUIStore()
+  const { setToast, setPendingCallKitAction } = useUIStore()
   const prevActiveCallRef = useRef(activeCall)
   const activeCallRef = useRef(activeCall)
   activeCallRef.current = activeCall
@@ -186,25 +186,6 @@ export const useIncomingCalls = () => {
 
     ;(async () => {
       const { FirebaseMessaging } = await import('@capacitor-firebase/messaging')
-
-      // Notification tap: app was background, user tapped notification
-      // (Capacitor queues this event, so cold-start taps are also delivered here)
-      const tapListener = await FirebaseMessaging.addListener(
-        'notificationActionPerformed',
-        async (event) => {
-          const data = (event.notification.data ?? {}) as Record<string, string>
-
-          await clearDeliveredNotifications()
-          await cancelCallNotification()
-
-          if (data.type === 'incoming_call') {
-            setCallFromBackground(true)
-          } else if (data.type === 'new_message' && data.conversationId) {
-            setPendingNavConvId(data.conversationId)
-          }
-        }
-      )
-      removeListeners.push(() => tapListener.remove())
 
       // Foreground message: app is open, FCM delivers silently (no system banner/sound
       // because presentationOptions excludes 'alert' and 'sound').
