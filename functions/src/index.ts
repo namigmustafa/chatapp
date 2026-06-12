@@ -1,5 +1,5 @@
 import * as admin from 'firebase-admin'
-import { onDocumentCreated } from 'firebase-functions/v2/firestore'
+import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore'
 import { FieldValue } from 'firebase-admin/firestore'
 import { defineSecret } from 'firebase-functions/params'
 import * as apn from '@parse/node-apn'
@@ -143,6 +143,48 @@ export const onCallCreated = onDocumentCreated(
     if (failed.size > 0) await pruneExpiredTokens(call.calleeUserId, tokenData, failed)
   }
 )
+
+// Arama durumu değişti — missed/rejected → sohbete mesaj yaz
+export const onCallUpdated = onDocumentUpdated('calls/{callId}', async (event) => {
+  const before = event.data?.before.data()
+  const after  = event.data?.after.data()
+  if (!before || !after) return
+  if (before.status === after.status) return
+
+  const status = after.status as string
+  let msgType: string | null = null
+  if (status === 'missed')   msgType = 'call_missed'
+  if (status === 'rejected') msgType = 'call_rejected'
+  if (status === 'ended')    msgType = 'call_ended'
+  if (!msgType) return
+
+  const conversationId = after.conversationId as string | undefined
+  if (!conversationId) return
+
+  const callerUserId = after.callerUserId as string
+
+  // Write a system message into the conversation
+  await db.collection('messages').add({
+    conversationId,
+    senderId: callerUserId,
+    type: msgType,
+    content: '',
+    status: 'sent',
+    createdAt: FieldValue.serverTimestamp(),
+    deletedAt: null,
+  })
+
+  // Update conversation lastMessage
+  await db.doc(`conversations/${conversationId}`).update({
+    lastMessage: {
+      type: msgType,
+      content: '',
+      senderId: callerUserId,
+      timestamp: Date.now(),
+    },
+    updatedAt: FieldValue.serverTimestamp(),
+  })
+})
 
 // Yeni mesaj — push notification gönder
 export const onMessageCreated = onDocumentCreated('messages/{msgId}', async (event) => {

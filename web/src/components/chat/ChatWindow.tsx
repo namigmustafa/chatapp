@@ -180,7 +180,7 @@ export default function ChatWindow({
           return (
             <div className="flex items-center gap-0.5 flex-shrink-0">
               <button
-                onClick={() => canCall && startCall(myAliasId, otherAliasId, otherUserId, 'audio')}
+                onClick={() => canCall && startCall(myAliasId, otherAliasId, otherUserId, 'audio', conversationId)}
                 title={canCall ? 'Audio call' : 'Alias is currently unreachable'}
                 disabled={!canCall}
                 className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
@@ -190,7 +190,7 @@ export default function ChatWindow({
                 </svg>
               </button>
               <button
-                onClick={() => canCall && startCall(myAliasId, otherAliasId, otherUserId, 'video')}
+                onClick={() => canCall && startCall(myAliasId, otherAliasId, otherUserId, 'video', conversationId)}
                 title={canCall ? 'Video call' : 'Alias is currently unreachable'}
                 disabled={!canCall}
                 className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"

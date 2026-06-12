@@ -10,9 +10,8 @@ async function setupNative() {
   const { StatusBar, Style } = await import('@capacitor/status-bar')
   const { Keyboard } = await import('@capacitor/keyboard')
 
-  await StatusBar.setStyle({ style: Style.Dark })
-  await StatusBar.setBackgroundColor({ color: '#0a0a0a' })
-  await StatusBar.setOverlaysWebView({ overlay: false })
+  await StatusBar.setOverlaysWebView({ overlay: true })
+  await StatusBar.setStyle({ style: Style.Light })
 
   // Keyboard pushes content up instead of overlaying it
   Keyboard.setAccessoryBarVisible({ isVisible: false })

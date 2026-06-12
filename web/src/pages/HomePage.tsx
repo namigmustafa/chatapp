@@ -34,16 +34,38 @@ export default function HomePage() {
 
   // Handle pending navigation from notification tap
   useEffect(() => {
-    if (!pendingNavConvId || !user || conversations.length === 0) return
+    if (!pendingNavConvId || !user) return
+
     const conv = conversations.find((c) => c.id === pendingNavConvId)
-    if (!conv) return
-    const otherUserId = conv.participants.find((p) => p !== user.uid) ?? ''
-    const myIdx = conv.participants.indexOf(user.uid)
-    const myAliasId = conv.participantAliases[myIdx] ?? ''
-    const otherAliasId =
-      conv.participantAliases[conv.participants.indexOf(otherUserId)] ?? ''
-    handleSelectConversation(pendingNavConvId, otherUserId, otherAliasId, myAliasId)
-    setPendingNavConvId(null)
+    if (conv) {
+      const otherUserId = conv.participants.find((p) => p !== user.uid) ?? ''
+      const myIdx = conv.participants.indexOf(user.uid)
+      const myAliasId = conv.participantAliases[myIdx] ?? ''
+      const otherAliasId = conv.participantAliases[conv.participants.indexOf(otherUserId)] ?? ''
+      handleSelectConversation(pendingNavConvId, otherUserId, otherAliasId, myAliasId)
+      setPendingNavConvId(null)
+      return
+    }
+
+    // Subscription not loaded yet — fetch directly so we don't miss cold-start taps
+    if (conversations.length > 0) return
+    const convId = pendingNavConvId
+    ;(async () => {
+      try {
+        const { doc: fsDoc, getDoc } = await import('firebase/firestore')
+        const { db } = await import('@/services/firebase')
+        const snap = await getDoc(fsDoc(db, 'conversations', convId))
+        if (!snap.exists()) return
+        if (useUIStore.getState().pendingNavConvId !== convId) return
+        const d = snap.data() as { participants: string[]; participantAliases: string[] }
+        const otherUserId = d.participants.find((p) => p !== user.uid) ?? ''
+        const myIdx = d.participants.indexOf(user.uid)
+        const myAliasId = d.participantAliases[myIdx] ?? ''
+        const otherAliasId = d.participantAliases[d.participants.indexOf(otherUserId)] ?? ''
+        handleSelectConversation(convId, otherUserId, otherAliasId, myAliasId)
+        setPendingNavConvId(null)
+      } catch {}
+    })()
   }, [pendingNavConvId, conversations, user])
 
   const handleSelectConversation = (

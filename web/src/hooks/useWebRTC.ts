@@ -7,6 +7,7 @@ import {
   answerCall,
   rejectCall,
   endCall,
+  missedCall,
   sendIceCandidate,
   subscribeCall,
   subscribeIceCandidates,
@@ -65,7 +66,7 @@ export const useWebRTC = () => {
   }
 
   const startCall = useCallback(
-    async (callerAliasId: string, calleeAliasId: string, calleeUserId: string, type: CallType) => {
+    async (callerAliasId: string, calleeAliasId: string, calleeUserId: string, type: CallType, conversationId: string) => {
       if (!user) return
 
       const pc = createPeerConnection()
@@ -79,7 +80,6 @@ export const useWebRTC = () => {
         if (e.streams[0]) setRemoteStream(e.streams[0])
       }
 
-      // Buffer caller ICE candidates until we have callId
       const callerCandidatesBuffer: IceCandidate[] = []
       let resolvedCallId: string | null = null
 
@@ -100,22 +100,29 @@ export const useWebRTC = () => {
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
 
-      resolvedCallId = await initiateCall(user.uid, callerAliasId, calleeAliasId, calleeUserId, type, offer)
+      resolvedCallId = await initiateCall(user.uid, callerAliasId, calleeAliasId, calleeUserId, type, offer, conversationId)
       const callId = resolvedCallId
 
-      // Flush buffered ICE candidates
       for (const ice of callerCandidatesBuffer) {
         sendIceCandidate(callId, 'caller', ice).catch(() => {})
       }
+
+      // 30-second ring timeout — mark as missed if no answer
+      const ringTimeout = setTimeout(() => {
+        missedCall(callId).catch(() => {})
+        cleanup()
+      }, 30_000)
 
       const unsubCall = subscribeCall(callId, async (call) => {
         if (!call) return
         setActiveCall(call)
         if (call.answer && pc.signalingState === 'have-local-offer') {
+          clearTimeout(ringTimeout)
           await pc.setRemoteDescription(new RTCSessionDescription(call.answer))
           flushPendingIce(pc)
         }
-        if (call.status === 'ended' || call.status === 'rejected') {
+        if (call.status === 'ended' || call.status === 'rejected' || call.status === 'missed') {
+          clearTimeout(ringTimeout)
           setTimeout(() => cleanup(), 1500)
         }
       })
@@ -124,7 +131,7 @@ export const useWebRTC = () => {
         addIceSafe(pc, ice)
       })
 
-      unsubscribeRef.current.push(unsubCall, unsubIce)
+      unsubscribeRef.current.push(unsubCall, unsubIce, () => clearTimeout(ringTimeout))
     },
     [user, setLocalStream, setRemoteStream, setPeerConnection, setActiveCall, cleanup]
   )
@@ -184,7 +191,12 @@ export const useWebRTC = () => {
   }, [cleanup])
 
   const hangUp = useCallback(async (callId: string) => {
-    await endCall(callId)
+    const currentStatus = useCallStore.getState().activeCall?.status
+    if (currentStatus === 'ringing') {
+      await missedCall(callId)
+    } else {
+      await endCall(callId)
+    }
     cleanup()
     setTimeout(() => cleanupCall(callId), 5000)
   }, [cleanup])

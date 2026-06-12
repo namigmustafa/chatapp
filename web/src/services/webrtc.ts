@@ -47,7 +47,8 @@ export const initiateCall = async (
   calleeAliasId: string,
   calleeUserId: string,
   type: CallType,
-  offer: RTCSessionDescriptionInit
+  offer: RTCSessionDescriptionInit,
+  conversationId: string
 ): Promise<string> => {
   const callId = `${callerUserId}_${calleeUserId}_${Date.now()}`
   await setDoc(doc(db, CALLS, callId), {
@@ -56,6 +57,7 @@ export const initiateCall = async (
     calleeAliasId,
     calleeUserId,
     type,
+    conversationId,
     status: 'ringing',
     offer,
     answer: null,
@@ -80,6 +82,10 @@ export const rejectCall = async (callId: string) => {
 
 export const endCall = async (callId: string) => {
   await updateDoc(doc(db, CALLS, callId), { status: 'ended' })
+}
+
+export const missedCall = async (callId: string) => {
+  await updateDoc(doc(db, CALLS, callId), { status: 'missed' })
 }
 
 export const sendIceCandidate = async (
