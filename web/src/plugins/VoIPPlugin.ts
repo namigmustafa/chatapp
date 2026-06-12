@@ -35,13 +35,13 @@ export interface VoIPPluginDefinition {
 }
 
 // No-op web implementation — VoIP push is iOS-only
-const webImpl: VoIPPluginDefinition = {
-  async register() { return {} },
+const webImpl = {
+  async register() { return {} as VoIPRegistrationResult },
   async endCall() {},
-  async addListener(_event: string, _fn: (...args: unknown[]) => void) {
+  async addListener(_event: string, _fn: unknown) {
     return { remove: () => {} }
   },
-}
+} as unknown as VoIPPluginDefinition
 
 export const VoIPPlugin = registerPlugin<VoIPPluginDefinition>('VoIPPlugin', {
   web: () => webImpl,
