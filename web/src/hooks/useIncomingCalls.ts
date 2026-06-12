@@ -4,7 +4,6 @@ import { useAuthStore } from '@/store/authStore'
 import { useCallStore } from '@/store/callStore'
 import { useUIStore } from '@/store/uiStore'
 import { subscribeIncomingCalls } from '@/services/webrtc'
-import { playMessageSound } from '@/utils/notificationSound'
 
 async function registerPushToken(userId: string) {
   if (!Capacitor.isNativePlatform()) {
@@ -91,7 +90,7 @@ async function showCallNotification(callerName: string, callType: string) {
 export const useIncomingCalls = () => {
   const { user } = useAuthStore()
   const { setIncomingCall, activeCall, incomingCall } = useCallStore()
-  const { setToast, setPendingCallKitAction } = useUIStore()
+  const { setPendingCallKitAction } = useUIStore()
   const prevActiveCallRef = useRef(activeCall)
   const activeCallRef = useRef(activeCall)
   activeCallRef.current = activeCall
@@ -177,51 +176,21 @@ export const useIncomingCalls = () => {
     }
   }, [activeCall])
 
-  // FCM listeners: notification tap + foreground message handler
+  // Clear badge whenever app comes to foreground
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
     if (!user?.uid) return
 
-    const removeListeners: Array<() => void> = []
-
+    let removeAppListener: (() => void) | null = null
     ;(async () => {
-      const { FirebaseMessaging } = await import('@capacitor-firebase/messaging')
-
-      // Foreground message: app is open, FCM delivers silently (no system banner/sound
-      // because presentationOptions excludes 'alert' and 'sound').
-      const fgListener = await FirebaseMessaging.addListener(
-        'notificationReceived',
-        (event) => {
-          const data = (event.notification.data ?? {}) as Record<string, string>
-          if (data.type !== 'new_message') return
-
-          const convId = data.conversationId
-          if (!convId) return
-
-          // Active conversation → suppress entirely
-          const { activeConvId } = useUIStore.getState()
-          if (convId === activeConvId) return
-
-          // Different conversation → play sound + show in-app toast
-          playMessageSound()
-          const title = event.notification.title ?? 'New message'
-          const body = event.notification.body ?? ''
-          setToast({ id: `${convId}-${Date.now()}`, title, body, convId })
-        }
-      )
-      removeListeners.push(() => fgListener.remove())
-
-      // Clear badge when app comes to foreground
       const { App } = await import('@capacitor/app')
       const appListener = await App.addListener('appStateChange', async ({ isActive }) => {
         if (isActive) await clearDeliveredNotifications()
       })
-      removeListeners.push(() => appListener.remove())
+      removeAppListener = () => appListener.remove()
     })()
 
-    return () => {
-      removeListeners.forEach((fn) => fn())
-    }
+    return () => { removeAppListener?.() }
   }, [user?.uid])
 
   // Firestore incoming call subscription

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Sidebar from '@/components/layout/Sidebar'
 import ChatWindow from '@/components/chat/ChatWindow'
 import CallOverlay from '@/components/call/CallOverlay'
@@ -8,6 +8,7 @@ import { useIncomingCalls } from '@/hooks/useIncomingCalls'
 import { usePresence } from '@/hooks/usePresence'
 import { useUIStore } from '@/store/uiStore'
 import { subscribeConversations } from '@/services/conversations'
+import { playMessageSound } from '@/utils/notificationSound'
 import type { Conversation } from '@/types'
 
 export default function HomePage() {
@@ -21,7 +22,10 @@ export default function HomePage() {
   const [mobileShowChat, setMobileShowChat] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
 
-  const { pendingNavConvId, setPendingNavConvId, setActiveConvId } = useUIStore()
+  const { pendingNavConvId, setPendingNavConvId, setActiveConvId, setToast } = useUIStore()
+  // Tracks the last-seen lastMessage timestamp per conversation.
+  // Used to detect newly arrived messages without relying on FCM foreground events.
+  const lastMsgTsRef = useRef<Map<string, number>>(new Map())
 
   useIncomingCalls()
   usePresence()
@@ -31,6 +35,52 @@ export default function HomePage() {
     if (!user) return
     return subscribeConversations(user.uid, setConversations)
   }, [user])
+
+  // Detect newly arrived messages via Firestore (reliable replacement for FCM
+  // notificationReceived which is unreliable on iOS for notification messages).
+  // Only fires for messages that arrive AFTER the first snapshot (prevTs > 0).
+  useEffect(() => {
+    if (!user) return
+    const prev = lastMsgTsRef.current
+    const next = new Map<string, number>()
+
+    for (const conv of conversations) {
+      const ts = (() => {
+        const t = conv.lastMessage?.timestamp
+        if (!t) return 0
+        if (typeof t === 'number') return t
+        if (typeof t === 'object' && 'toMillis' in (t as object))
+          return (t as { toMillis: () => number }).toMillis()
+        return 0
+      })()
+
+      const prevTs = prev.get(conv.id) ?? 0
+
+      // New message from someone else in a non-active conversation
+      if (
+        prevTs > 0 &&
+        ts > prevTs &&
+        conv.lastMessage?.senderId !== user.uid &&
+        conv.id !== useUIStore.getState().activeConvId
+      ) {
+        const myIdx = conv.participants.indexOf(user.uid)
+        const otherIdx = myIdx === 0 ? 1 : 0
+        const senderAlias = conv.participantAliases?.[otherIdx] ?? 'Unknown'
+        const body =
+          conv.lastMessage!.type === 'text'
+            ? conv.lastMessage!.content
+            : conv.lastMessage!.type === 'image' ? '📷 Photo'
+            : conv.lastMessage!.type === 'video' ? '🎥 Video'
+            : 'New message'
+        playMessageSound()
+        setToast({ id: `${conv.id}-${ts}`, title: `@${senderAlias}`, body, convId: conv.id })
+      }
+
+      next.set(conv.id, ts)
+    }
+
+    lastMsgTsRef.current = next
+  }, [conversations, user])
 
   // Handle pending navigation from notification tap
   useEffect(() => {
