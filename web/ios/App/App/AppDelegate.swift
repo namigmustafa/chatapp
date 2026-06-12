@@ -25,8 +25,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
     // MARK: - CallKit setup
 
     private func setupCallKit() {
-        let config = CXProviderConfiguration()
-        config.localizedName = "ChatApp"
+        let config = CXProviderConfiguration(localizedName: "ChatApp")
         config.supportsVideo = true
         config.maximumCallsPerCallGroup = 1
         config.maximumCallGroups = 1
@@ -117,7 +116,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
 
     func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP])
+        try? session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
         try? session.setActive(true)
         NotificationCenter.default.post(
             name: Notification.Name("VoIPCallAnswered"),
