@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { onAuthChange, handleGoogleRedirect } from '@/services/auth'
 import { useAuthStore } from '@/store/authStore'
@@ -27,11 +27,8 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 
 function AppInner() {
   useFileTransferReceiver()
+  const navigate = useNavigate()
 
-  // Register notification tap listener as early as possible — before auth resolves.
-  // ProtectedRoute shows "Loading..." until auth is ready, so placing this inside
-  // HomePage (behind the auth gate) means the listener registers too late and the
-  // cold-start buffered event is never consumed.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
     let remove: (() => void) | null = null
@@ -39,19 +36,23 @@ function AppInner() {
       const { FirebaseMessaging } = await import('@capacitor-firebase/messaging')
       const listener = await FirebaseMessaging.addListener(
         'notificationActionPerformed',
-        async (event) => {
+        (event) => {
           const data = (event.notification.data ?? {}) as Record<string, string>
 
-          // Clear badge + delivered notifications when user taps any notification
-          try {
-            await FirebaseMessaging.removeAllDeliveredNotifications()
-          } catch {}
-
           if (data.type === 'new_message' && data.conversationId) {
+            // Set nav target first (synchronous) — no awaits before this.
+            // Awaiting anything here can silently block during background→foreground
+            // transition if the Capacitor bridge hasn't fully resumed yet.
             useUIStore.getState().setPendingNavConvId(data.conversationId)
+            // If user is on /settings or any other page, bring them to HomePage
+            // so the pendingNavConvId effect can fire.
+            navigate('/')
           } else if (data.type === 'incoming_call') {
             useUIStore.getState().setCallFromBackground(true)
           }
+
+          // Fire-and-forget — must not block the handler above
+          FirebaseMessaging.removeAllDeliveredNotifications().catch(() => {})
         }
       )
       remove = () => listener.remove()
