@@ -29,6 +29,24 @@ function AppInner() {
   useFileTransferReceiver()
   const navigate = useNavigate()
 
+  // Path 1 — cold start (app was killed, user tapped notification):
+  // AppDelegate stored conversationId in UserDefaults before JS loaded.
+  // Read it once on mount, clear it, and navigate. No bridge timing risk.
+  useEffect(() => {
+    if (Capacitor.getPlatform() !== 'ios') return
+    ;(async () => {
+      try {
+        const { VoIPPlugin } = await import('@/plugins/VoIPPlugin')
+        const { conversationId } = await VoIPPlugin.getStartupConversation()
+        if (conversationId) {
+          navigate(`/?conv=${conversationId}`, { replace: true })
+        }
+      } catch {}
+    })()
+  }, [])
+
+  // Path 2 — background → foreground (app was running, user tapped notification):
+  // Listener is already registered; event fires synchronously to it.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
     let remove: (() => void) | null = null
@@ -38,20 +56,11 @@ function AppInner() {
         'notificationActionPerformed',
         (event) => {
           const data = (event.notification.data ?? {}) as Record<string, string>
-
           if (data.type === 'new_message' && data.conversationId) {
-            // Set nav target first (synchronous) — no awaits before this.
-            // Awaiting anything here can silently block during background→foreground
-            // transition if the Capacitor bridge hasn't fully resumed yet.
-            useUIStore.getState().setPendingNavConvId(data.conversationId)
-            // If user is on /settings or any other page, bring them to HomePage
-            // so the pendingNavConvId effect can fire.
-            navigate('/')
+            navigate(`/?conv=${data.conversationId}`, { replace: true })
           } else if (data.type === 'incoming_call') {
             useUIStore.getState().setCallFromBackground(true)
           }
-
-          // Fire-and-forget — must not block the handler above
           FirebaseMessaging.removeAllDeliveredNotifications().catch(() => {})
         }
       )

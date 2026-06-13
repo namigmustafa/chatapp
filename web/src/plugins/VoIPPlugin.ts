@@ -16,6 +16,7 @@ export interface VoIPRegistrationResult {
 
 export interface VoIPPluginDefinition {
   register(): Promise<VoIPRegistrationResult>
+  getStartupConversation(): Promise<{ conversationId: string }>
   endCall(): Promise<void>
   addListener(
     eventName: 'registration',
@@ -38,6 +39,7 @@ export interface VoIPPluginDefinition {
 // No-op web implementation — VoIP push is iOS-only
 const webImpl = {
   async register() { return {} as VoIPRegistrationResult },
+  async getStartupConversation() { return { conversationId: '' } },
   async endCall() {},
   async addListener(_event: string, _fn: unknown) {
     return { remove: () => {} }

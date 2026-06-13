@@ -59,6 +59,13 @@ public class VoIPPlugin: CAPPlugin {
         call.resolve(result)
     }
 
+    // Returns and clears any conversationId stored at cold-start notification tap.
+    @objc func getStartupConversation(_ call: CAPPluginCall) {
+        let convId = UserDefaults.standard.string(forKey: "pending_conv_id") ?? ""
+        UserDefaults.standard.removeObject(forKey: "pending_conv_id")
+        call.resolve(["conversationId": convId])
+    }
+
     @objc func endCall(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             (UIApplication.shared.delegate as? AppDelegate)?.endCallKitCall()

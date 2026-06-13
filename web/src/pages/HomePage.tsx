@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import Sidebar from '@/components/layout/Sidebar'
 import ChatWindow from '@/components/chat/ChatWindow'
 import CallOverlay from '@/components/call/CallOverlay'
@@ -22,7 +23,8 @@ export default function HomePage() {
   const [mobileShowChat, setMobileShowChat] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
 
-  const { pendingNavConvId, setPendingNavConvId, setActiveConvId, setToast } = useUIStore()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { setActiveConvId, setToast } = useUIStore()
   // Tracks the last-seen lastMessage timestamp per conversation.
   // Used to detect newly arrived messages without relying on FCM foreground events.
   const lastMsgTsRef = useRef<Map<string, number>>(new Map())
@@ -82,40 +84,44 @@ export default function HomePage() {
     lastMsgTsRef.current = next
   }, [conversations, user])
 
-  // Handle pending navigation from notification tap
+  // Handle notification-tap navigation: conv ID comes in via ?conv= URL param.
+  // URL is the single source of truth — no Zustand intermediate, no extra render cycle.
   useEffect(() => {
-    if (!pendingNavConvId || !user) return
+    const convId = searchParams.get('conv')
+    if (!convId || !user) return
 
-    const conv = conversations.find((c) => c.id === pendingNavConvId)
+    const conv = conversations.find((c) => c.id === convId)
     if (conv) {
       const otherUserId = conv.participants.find((p) => p !== user.uid) ?? ''
       const myIdx = conv.participants.indexOf(user.uid)
       const myAliasId = conv.participantAliases[myIdx] ?? ''
       const otherAliasId = conv.participantAliases[conv.participants.indexOf(otherUserId)] ?? ''
-      handleSelectConversation(pendingNavConvId, otherUserId, otherAliasId, myAliasId)
-      setPendingNavConvId(null)
+      handleSelectConversation(convId, otherUserId, otherAliasId, myAliasId)
+      setSearchParams({}, { replace: true })
       return
     }
 
-    // Conv not in loaded list yet — fetch directly (handles cold-start and slow subscriptions)
-    const convId = pendingNavConvId
+    // Conv not in loaded list yet — fetch directly (cold-start / slow subscription).
+    // cancelled flag prevents double-navigation if conversations loads while fetch is in-flight.
+    let cancelled = false
     ;(async () => {
       try {
         const { doc: fsDoc, getDoc } = await import('firebase/firestore')
         const { db } = await import('@/services/firebase')
         const snap = await getDoc(fsDoc(db, 'conversations', convId))
-        if (!snap.exists()) return
-        if (useUIStore.getState().pendingNavConvId !== convId) return
+        if (cancelled || !snap.exists()) return
         const d = snap.data() as { participants: string[]; participantAliases: string[] }
         const otherUserId = d.participants.find((p) => p !== user.uid) ?? ''
         const myIdx = d.participants.indexOf(user.uid)
         const myAliasId = d.participantAliases[myIdx] ?? ''
         const otherAliasId = d.participantAliases[d.participants.indexOf(otherUserId)] ?? ''
         handleSelectConversation(convId, otherUserId, otherAliasId, myAliasId)
-        setPendingNavConvId(null)
+        setSearchParams({}, { replace: true })
       } catch {}
     })()
-  }, [pendingNavConvId, conversations, user])
+
+    return () => { cancelled = true }
+  }, [searchParams, conversations, user])
 
   const handleSelectConversation = (
     convId: string,
