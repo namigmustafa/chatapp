@@ -128,11 +128,7 @@ export default function HomePage() {
     })()
 
     return () => { active = false }
-  // conversations excluded from deps intentionally: the direct fetch above covers
-  // the case where the subscription hasn't loaded yet. Putting conversations here
-  // would cancel in-flight fetches on every subscription update, causing missed navigations.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, user])
+  }, [searchParams, conversations, user])
 
   const handleSelectConversation = (
     convId: string,
