@@ -84,44 +84,55 @@ export default function HomePage() {
     lastMsgTsRef.current = next
   }, [conversations, user])
 
+  // When URL has ?conv=, immediately switch to main panel — no data needed.
+  // Prevents the sidebar from showing while conversation data loads.
+  useEffect(() => {
+    if (searchParams.get('conv')) setMobileShowChat(true)
+  }, [searchParams])
+
   // Handle notification-tap navigation: conv ID comes in via ?conv= URL param.
-  // URL is the single source of truth — no Zustand intermediate, no extra render cycle.
+  // Always fetches directly from Firestore so we don't depend on the subscription
+  // being loaded yet (cold-start, background→foreground, slow network).
   useEffect(() => {
     const convId = searchParams.get('conv')
     if (!convId || !user) return
 
-    const conv = conversations.find((c) => c.id === convId)
-    if (conv) {
-      const otherUserId = conv.participants.find((p) => p !== user.uid) ?? ''
-      const myIdx = conv.participants.indexOf(user.uid)
-      const myAliasId = conv.participantAliases[myIdx] ?? ''
-      const otherAliasId = conv.participantAliases[conv.participants.indexOf(otherUserId)] ?? ''
+    const open = (participants: string[], participantAliases: string[]) => {
+      const otherUserId = participants.find((p) => p !== user.uid) ?? ''
+      const myIdx = participants.indexOf(user.uid)
+      const myAliasId = participantAliases[myIdx] ?? ''
+      const otherAliasId = participantAliases[participants.indexOf(otherUserId)] ?? ''
       handleSelectConversation(convId, otherUserId, otherAliasId, myAliasId)
       setSearchParams({}, { replace: true })
+    }
+
+    // Check in-memory list first (instant, avoids a network round-trip)
+    const cached = conversations.find((c) => c.id === convId)
+    if (cached) {
+      open(cached.participants, cached.participantAliases)
       return
     }
 
-    // Conv not in loaded list yet — fetch directly (cold-start / slow subscription).
-    // cancelled flag prevents double-navigation if conversations loads while fetch is in-flight.
-    let cancelled = false
+    // Not in cache yet — fetch directly. 'active' prevents a stale fetch from
+    // navigating after the user has tapped a different notification.
+    let active = true
     ;(async () => {
       try {
         const { doc: fsDoc, getDoc } = await import('firebase/firestore')
         const { db } = await import('@/services/firebase')
         const snap = await getDoc(fsDoc(db, 'conversations', convId))
-        if (cancelled || !snap.exists()) return
+        if (!active || !snap.exists()) return
         const d = snap.data() as { participants: string[]; participantAliases: string[] }
-        const otherUserId = d.participants.find((p) => p !== user.uid) ?? ''
-        const myIdx = d.participants.indexOf(user.uid)
-        const myAliasId = d.participantAliases[myIdx] ?? ''
-        const otherAliasId = d.participantAliases[d.participants.indexOf(otherUserId)] ?? ''
-        handleSelectConversation(convId, otherUserId, otherAliasId, myAliasId)
-        setSearchParams({}, { replace: true })
+        open(d.participants, d.participantAliases)
       } catch {}
     })()
 
-    return () => { cancelled = true }
-  }, [searchParams, conversations, user])
+    return () => { active = false }
+  // conversations excluded from deps intentionally: the direct fetch above covers
+  // the case where the subscription hasn't loaded yet. Putting conversations here
+  // would cancel in-flight fetches on every subscription update, causing missed navigations.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, user])
 
   const handleSelectConversation = (
     convId: string,
@@ -178,6 +189,10 @@ export default function HomePage() {
             isVisible={mobileShowChat}
             onBack={handleBack}
           />
+        ) : searchParams.get('conv') ? (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-zinc-500 text-sm">Opening chat...</p>
+          </div>
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center px-6">
