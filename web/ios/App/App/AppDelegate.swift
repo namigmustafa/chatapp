@@ -16,16 +16,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
     private var activeCallUUID: UUID?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        // NOTE: Do NOT set UNUserNotificationCenter.current().delegate here.
+        // Capacitor core owns that delegate (via its notificationRouter) and the
+        // @capacitor-firebase/messaging plugin hooks into it to emit the JS
+        // `notificationActionPerformed` event. Overriding it kills notification-tap
+        // routing — message taps would never reach the WebView.
         FirebaseApp.configure()
-
-        // Cold-start notification tap: iOS puts the APNs payload in launchOptions ONLY when the
-        // app was killed and the user tapped a notification to launch it. Store the conversationId
-        // in UserDefaults right now — before JS loads — so getStartupConversation() can read it.
-        if let notification = launchOptions?[.remoteNotification] as? [String: Any],
-           let type = notification["type"] as? String, type == "new_message",
-           let convId = notification["conversationId"] as? String, !convId.isEmpty {
-            UserDefaults.standard.set(convId, forKey: "pending_conv_id")
-        }
 
         setupCallKit()
         setupVoIPPushRegistry()

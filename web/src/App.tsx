@@ -29,24 +29,12 @@ function AppInner() {
   useFileTransferReceiver()
   const navigate = useNavigate()
 
-  // Path 1 — cold start (app was killed, user tapped notification):
-  // AppDelegate stored conversationId in UserDefaults before JS loaded.
-  // Read it once on mount, clear it, and navigate. No bridge timing risk.
-  useEffect(() => {
-    if (Capacitor.getPlatform() !== 'ios') return
-    ;(async () => {
-      try {
-        const { VoIPPlugin } = await import('@/plugins/VoIPPlugin')
-        const { conversationId } = await VoIPPlugin.getStartupConversation()
-        if (conversationId) {
-          navigate(`/?conv=${conversationId}`, { replace: true })
-        }
-      } catch {}
-    })()
-  }, [])
-
-  // Path 2 — background → foreground (app was running, user tapped notification):
-  // Listener is already registered; event fires synchronously to it.
+  // Single source of truth for notification taps on ALL native platforms (iOS + Android).
+  // Capacitor core owns the UNUserNotificationCenter delegate; @capacitor-firebase/messaging
+  // forwards taps here via `notificationActionPerformed` with retainUntilConsumed:true — so
+  // the event is buffered and delivered even on a cold start (app killed / lock-screen tap)
+  // once this listener attaches. Do NOT set UNUserNotificationCenter.delegate natively; that
+  // hijacks Capacitor's router and silently disables this event.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
     let remove: (() => void) | null = null
@@ -56,12 +44,11 @@ function AppInner() {
         'notificationActionPerformed',
         (event) => {
           const data = (event.notification.data ?? {}) as Record<string, string>
-          if (data.type === 'new_message' && data.conversationId) {
-            navigate(`/?conv=${data.conversationId}`, { replace: true })
-          } else if (data.type === 'incoming_call') {
+          if (data.type === 'incoming_call') {
             useUIStore.getState().setCallFromBackground(true)
+          } else if (data.type === 'new_message' && data.conversationId) {
+            navigate(`/?conv=${data.conversationId}`, { replace: true })
           }
-          FirebaseMessaging.removeAllDeliveredNotifications().catch(() => {})
         }
       )
       remove = () => listener.remove()
