@@ -19,7 +19,7 @@ async function sendVoIPPush(
   privateKey: string,
   keyId: string,
   teamId: string
-): Promise<void> {
+) {
   const provider = new apn.Provider({
     token: { key: privateKey, keyId, teamId },
     production: true,
@@ -30,7 +30,9 @@ async function sendVoIPPush(
     note.pushType = 'voip'
     note.priority = 10
     note.payload = payload
-    await provider.send(note, voipToken)
+    // node-apn does NOT throw on an APNs rejection — it resolves with a `failed`
+    // array. Return the result so the caller can log the exact reason.
+    return await provider.send(note, voipToken)
   } finally {
     provider.shutdown()
   }
@@ -81,20 +83,43 @@ export const onCallCreated = onDocumentCreated(
 
     // ── iOS VoIP push via APNs (wakes app from killed state, shows CallKit UI) ──
     const voipDoc = await db.doc(`voipTokens/${call.calleeUserId}`).get()
-    if (voipDoc.exists) {
-      const voipToken = voipDoc.data()?.ios as string | undefined
-      if (voipToken) {
-        const pk = APNS_PRIVATE_KEY.value()
-        const ki = APNS_KEY_ID.value()
-        const ti = APNS_TEAM_ID.value()
-        if (pk && ki && ti) {
-          await sendVoIPPush(
-            voipToken,
-            { callId, callType: call.type, callerName, callerUserId: call.callerUserId },
-            pk, ki, ti
-          ).catch((err: unknown) => console.error('[VoIP push] error:', err))
-        }
+    const voipToken = voipDoc.exists ? (voipDoc.data()?.ios as string | undefined) : undefined
+    const pk = APNS_PRIVATE_KEY.value()
+    const ki = APNS_KEY_ID.value()
+    const ti = APNS_TEAM_ID.value()
+
+    // Preflight: tells us instantly whether the problem is a missing token
+    // (device side), missing secrets (config), or something later (APNs reject).
+    console.log('[VoIP] preflight', {
+      callId,
+      calleeUserId: call.calleeUserId,
+      voipDocExists: voipDoc.exists,
+      hasVoipToken: !!voipToken,
+      hasPrivateKey: !!pk,
+      hasKeyId: !!ki,
+      hasTeamId: !!ti,
+      topic: `${BUNDLE_ID}.voip`,
+    })
+
+    if (voipToken && pk && ki && ti) {
+      try {
+        const res = await sendVoIPPush(
+          voipToken,
+          { callId, callType: call.type, callerName, callerUserId: call.callerUserId },
+          pk, ki, ti
+        )
+        // sent>0 → Apple accepted it (CallKit issue is then device-side).
+        // failed[].reason is the exact APNs error: BadDeviceToken (sandbox/prod
+        // mismatch), DeviceTokenNotForTopic (wrong bundle/entitlement), etc.
+        console.log('[VoIP] apns response', {
+          sent: res.sent.length,
+          failed: res.failed.map((f) => ({ status: f.status, reason: f.response?.reason })),
+        })
+      } catch (err) {
+        console.error('[VoIP] send threw:', err)
       }
+    } else {
+      console.warn('[VoIP] SKIPPED — missing VoIP token or APNs secrets (see preflight log)')
     }
 
     // ── FCM push (Android + web fallback) ──
