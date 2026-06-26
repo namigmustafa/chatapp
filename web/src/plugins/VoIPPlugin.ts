@@ -34,7 +34,7 @@ export interface VoIPPluginDefinition {
   ): Promise<{ remove: () => void }>
   addListener(
     eventName: 'callEnded',
-    listenerFunc: (event: { callUUID: string; callId?: string }) => void
+    listenerFunc: (event: { callUUID: string; callId?: string; answered?: boolean }) => void
   ): Promise<{ remove: () => void }>
 }
 

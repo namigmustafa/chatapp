@@ -163,7 +163,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         NotificationCenter.default.post(
             name: Notification.Name("VoIPCallEnded"),
             object: nil,
-            userInfo: ["callUUID": action.callUUID.uuidString, "callId": activeCallId ?? ""]
+            userInfo: [
+                "callUUID": action.callUUID.uuidString,
+                "callId": activeCallId ?? "",
+                // If the call was answered, this end is the CallKit→in-app handoff, not
+                // a decline — JS must NOT reject it.
+                "answered": activeCallAnswered,
+            ]
         )
         activeCallUUID = nil
         activeCallId = nil

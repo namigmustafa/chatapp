@@ -155,7 +155,11 @@ export const useIncomingCalls = () => {
 
         // User declined/ended from CallKit UI — guard: don't set stale decline
         // when dismissCallKit fires CXEndCallAction after an already-completed call.
-        const endListener = await VoIPPlugin.addListener('callEnded', ({ callId }) => {
+        const endListener = await VoIPPlugin.addListener('callEnded', ({ callId, answered }) => {
+          // When the call was answered, CallKit fires an "end" as it hands off to the
+          // in-app WebRTC call. That is NOT a decline — ignore it, or we'd reject the
+          // call the user just accepted.
+          if (answered) return
           const s = useCallStore.getState()
           if (s.incomingCall) {
             setPendingCallKitAction('decline')
