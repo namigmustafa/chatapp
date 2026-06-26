@@ -14,6 +14,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
     private let callController = CXCallController()
     private var voipRegistry: PKPushRegistry?
     private var activeCallUUID: UUID?
+    private var activeCallId: String?
+    private var activeCallAnswered = false
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // NOTE: Do NOT set UNUserNotificationCenter.current().delegate here.
@@ -78,6 +80,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
 
         let callUUID = UUID()
         activeCallUUID = callUUID
+        activeCallId = callId
+        activeCallAnswered = false
 
         let callInfo: [String: String] = [
             "callUUID":      callUUID.uuidString,
@@ -133,23 +137,33 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
         try? session.setActive(true)
+        activeCallAnswered = true
         // Persist the answered flag so JS can retrieve it if the app was not yet ready
         UserDefaults.standard.set(true, forKey: "voip_call_answered")
         NotificationCenter.default.post(
             name: Notification.Name("VoIPCallAnswered"),
             object: nil,
-            userInfo: ["callUUID": action.callUUID.uuidString]
+            userInfo: ["callUUID": action.callUUID.uuidString, "callId": activeCallId ?? ""]
         )
         action.fulfill()
     }
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+        // Persist the declined call id so JS can mark it 'rejected' in Firestore even
+        // if the app wasn't running when the user declined from CallKit. Only do this
+        // when the call was NOT answered — otherwise this is a normal hang-up, not a
+        // rejection, and we'd wrongly overwrite an answered/ended call as 'rejected'.
+        if !activeCallAnswered, let callId = activeCallId, !callId.isEmpty {
+            UserDefaults.standard.set(callId, forKey: "voip_declined_call_id")
+        }
         NotificationCenter.default.post(
             name: Notification.Name("VoIPCallEnded"),
             object: nil,
-            userInfo: ["callUUID": action.callUUID.uuidString]
+            userInfo: ["callUUID": action.callUUID.uuidString, "callId": activeCallId ?? ""]
         )
         activeCallUUID = nil
+        activeCallId = nil
+        activeCallAnswered = false
         action.fulfill()
     }
 

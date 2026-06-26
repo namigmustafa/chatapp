@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import { useAuthStore } from '@/store/authStore'
 import { useCallStore } from '@/store/callStore'
 import { useUIStore } from '@/store/uiStore'
-import { subscribeIncomingCalls } from '@/services/webrtc'
+import { subscribeIncomingCalls, rejectCall } from '@/services/webrtc'
 
 async function registerPushToken(userId: string) {
   if (!Capacitor.isNativePlatform()) {
@@ -113,6 +113,12 @@ export const useIncomingCalls = () => {
             setPendingCallKitAction('answer')
           }
 
+          // User declined from CallKit while JS wasn't running — mark the call
+          // 'rejected' now so the caller's device stops ringing.
+          if (result.pendingDeclineCallId) {
+            rejectCall(result.pendingDeclineCallId).catch(() => {})
+          }
+
           // Call arrived while app was killed — Firestore subscription will surface it.
           // pendingAnswer above handles the case where user already swiped to answer.
         } catch {}
@@ -145,9 +151,16 @@ export const useIncomingCalls = () => {
 
         // User declined/ended from CallKit UI — guard: don't set stale decline
         // when dismissCallKit fires CXEndCallAction after an already-completed call.
-        const endListener = await VoIPPlugin.addListener('callEnded', () => {
-          if (useCallStore.getState().incomingCall) {
+        const endListener = await VoIPPlugin.addListener('callEnded', ({ callId }) => {
+          const s = useCallStore.getState()
+          if (s.incomingCall) {
             setPendingCallKitAction('decline')
+          } else if (callId && !s.activeCall) {
+            // App was woken just to handle the decline and has no in-memory call
+            // (Firestore subscription not active). Reject directly via the call id so
+            // the caller stops ringing. The !activeCall guard avoids touching a call
+            // that was answered and is now being hung up.
+            rejectCall(callId).catch(() => {})
           }
         })
         removers.push(() => endListener.remove())

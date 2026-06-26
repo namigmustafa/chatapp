@@ -125,6 +125,11 @@ export const onCallCreated = onDocumentCreated(
       console.warn('[VoIP] SKIPPED — missing VoIP token or APNs secrets (see preflight log)')
     }
 
+    // iOS devices with a VoIP token already get the full-screen CallKit UI from the
+    // VoIP push above; sending the FCM "is calling you" banner too would double-notify.
+    // FCM is only a fallback for platforms without a VoIP token (Android / web).
+    if (voipToken) return
+
     // ── FCM push (Android + web fallback) ──
     const tokenDoc = await db.doc(`fcmTokens/${call.calleeUserId}`).get()
     if (!tokenDoc.exists) return

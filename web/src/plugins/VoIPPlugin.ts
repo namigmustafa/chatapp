@@ -12,6 +12,7 @@ export interface VoIPRegistrationResult {
   token?: string
   pendingCall?: VoIPCallInfo
   pendingAnswer?: boolean
+  pendingDeclineCallId?: string
 }
 
 export interface VoIPPluginDefinition {
@@ -32,7 +33,7 @@ export interface VoIPPluginDefinition {
   ): Promise<{ remove: () => void }>
   addListener(
     eventName: 'callEnded',
-    listenerFunc: (event: { callUUID: string }) => void
+    listenerFunc: (event: { callUUID: string; callId?: string }) => void
   ): Promise<{ remove: () => void }>
 }
 
