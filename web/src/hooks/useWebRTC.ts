@@ -109,11 +109,13 @@ export const useWebRTC = () => {
         sendIceCandidate(callId, 'caller', ice).catch(() => {})
       }
 
-      // 30-second ring timeout — mark as missed if no answer
+      // Ring timeout — mark as missed if no answer. 60s gives the callee time to
+      // unlock the phone after accepting from the lock screen (getUserMedia can't run
+      // while locked, so the answer only completes once the web view is visible).
       const ringTimeout = setTimeout(() => {
         missedCall(callId).catch(() => {})
         cleanup()
-      }, 30_000)
+      }, 60_000)
 
       const unsubCall = subscribeCall(callId, async (call) => {
         if (!call) return

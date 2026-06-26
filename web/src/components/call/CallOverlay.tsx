@@ -136,19 +136,39 @@ export default function CallOverlay() {
   // from Firestore by id so we still write the WebRTC answer and the caller connects.
   useEffect(() => {
     if (!pendingCallKitAction) return
+    let cancelled = false
+    let removeVis: (() => void) | null = null
 
-    if (incomingCall) {
-      if (pendingCallKitAction === 'answer') acceptCall(incomingCall)
-      else declineCall(incomingCall.id)
+    const clearPending = () => {
       setPendingCallKitAction(null)
       setPendingCallKitCallId(null)
-      return
     }
 
-    // Decline without an in-memory call is handled in useIncomingCalls (rejectCall).
-    // Here we only need to recover the ANSWER path by loading the call by id.
-    if (pendingCallKitAction === 'answer' && pendingCallKitCallId) {
-      let cancelled = false
+    // Answering needs the mic (getUserMedia), which iOS blocks while the screen is
+    // locked / the web view is backgrounded — there it just hangs forever. So defer
+    // the answer until the view is visible (phone unlocked / app foregrounded).
+    const answerWhenVisible = (call: Call) => {
+      const tryAccept = () => {
+        if (cancelled) return false
+        if (document.visibilityState === 'visible') {
+          acceptCall(call)
+          clearPending()
+          return true
+        }
+        return false
+      }
+      if (!tryAccept()) {
+        const onVis = () => { if (tryAccept()) removeVis?.() }
+        document.addEventListener('visibilitychange', onVis)
+        removeVis = () => document.removeEventListener('visibilitychange', onVis)
+      }
+    }
+
+    if (incomingCall) {
+      if (pendingCallKitAction === 'answer') answerWhenVisible(incomingCall)
+      else { declineCall(incomingCall.id); clearPending() }
+    } else if (pendingCallKitAction === 'answer' && pendingCallKitCallId) {
+      // Recover the answer path when the call wasn't in memory (load it by id).
       ;(async () => {
         try {
           const { doc, getDoc } = await import('firebase/firestore')
@@ -156,17 +176,15 @@ export default function CallOverlay() {
           const snap = await getDoc(doc(db, 'calls', pendingCallKitCallId))
           if (cancelled || !snap.exists()) return
           const call = { id: snap.id, ...snap.data() } as Call
-          if (call.offer && call.status === 'ringing') acceptCall(call)
-        } catch {}
-        if (!cancelled) {
-          setPendingCallKitAction(null)
-          setPendingCallKitCallId(null)
-        }
+          if (call.offer && call.status === 'ringing') answerWhenVisible(call)
+          else clearPending()
+        } catch { /* keep pending; effect will re-run */ }
       })()
-      return () => { cancelled = true }
     }
-    // else: wait for incomingCall to arrive (don't clear the pending action yet)
-  }, [pendingCallKitAction, incomingCall, pendingCallKitCallId])
+    // else: no call yet — wait for incomingCall to arrive (don't clear the action)
+
+    return () => { cancelled = true; removeVis?.() }
+  }, [pendingCallKitAction, incomingCall, pendingCallKitCallId, acceptCall, declineCall, setPendingCallKitAction, setPendingCallKitCallId])
 
   // Ringtone while incoming call is showing (not on iOS — CallKit plays its own ringtone)
   useEffect(() => {
