@@ -12,6 +12,7 @@ import {
   subscribeCall,
   subscribeIceCandidates,
   cleanupCall,
+  writeCalleeDebug,
 } from '@/services/webrtc'
 import type { Call, CallType, IceCandidate } from '@/types'
 
@@ -139,50 +140,63 @@ export const useWebRTC = () => {
 
   const acceptCall = useCallback(
     async (call: Call) => {
-      const pc = createPeerConnection()
-      pcRef.current = pc
-      const stream = await getMediaStream(call.type)
-      setLocalStream(stream)
-      setPeerConnection(pc)
+      // Diagnostic breadcrumb written to the call doc so we can see — in the Firestore
+      // console — exactly how far the answer got on the device (esp. CallKit/locked).
+      const dbg = (stage: string) => { void writeCalleeDebug(call.id, stage) }
+      try {
+        dbg('accept:start')
+        const pc = createPeerConnection()
+        pcRef.current = pc
+        const stream = await getMediaStream(call.type)
+        dbg('accept:gotMedia')
+        setLocalStream(stream)
+        setPeerConnection(pc)
 
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream))
-      pc.ontrack = (e) => {
-        if (e.streams[0]) setRemoteStream(e.streams[0])
-      }
-
-      // Set onicecandidate BEFORE setLocalDescription
-      pc.onicecandidate = ({ candidate }) => {
-        if (!candidate) return
-        sendIceCandidate(call.id, 'callee', {
-          candidate: candidate.candidate,
-          sdpMid: candidate.sdpMid,
-          sdpMLineIndex: candidate.sdpMLineIndex,
-        }).catch(() => {})
-      }
-
-      await pc.setRemoteDescription(new RTCSessionDescription(call.offer!))
-      flushPendingIce(pc)
-
-      const answer = await pc.createAnswer()
-      await pc.setLocalDescription(answer)
-
-      await answerCall(call.id, answer)
-      setIncomingCall(null)
-      setActiveCall({ ...call, status: 'active' })
-
-      const unsubIce = subscribeIceCandidates(call.id, 'caller', (ice) => {
-        addIceSafe(pc, ice)
-      })
-
-      const unsubCall = subscribeCall(call.id, (updated) => {
-        if (!updated) return
-        setActiveCall(updated)
-        if (updated.status === 'ended') {
-          setTimeout(() => cleanup(), 1500)
+        stream.getTracks().forEach((track) => pc.addTrack(track, stream))
+        pc.ontrack = (e) => {
+          if (e.streams[0]) setRemoteStream(e.streams[0])
         }
-      })
 
-      unsubscribeRef.current.push(unsubIce, unsubCall)
+        // Set onicecandidate BEFORE setLocalDescription
+        pc.onicecandidate = ({ candidate }) => {
+          if (!candidate) return
+          sendIceCandidate(call.id, 'callee', {
+            candidate: candidate.candidate,
+            sdpMid: candidate.sdpMid,
+            sdpMLineIndex: candidate.sdpMLineIndex,
+          }).catch(() => {})
+        }
+
+        await pc.setRemoteDescription(new RTCSessionDescription(call.offer!))
+        flushPendingIce(pc)
+
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+
+        await answerCall(call.id, answer)
+        dbg('accept:answerWritten')
+        setIncomingCall(null)
+        setActiveCall({ ...call, status: 'active' })
+
+        const unsubIce = subscribeIceCandidates(call.id, 'caller', (ice) => {
+          addIceSafe(pc, ice)
+        })
+
+        const unsubCall = subscribeCall(call.id, (updated) => {
+          if (!updated) return
+          setActiveCall(updated)
+          if (updated.status === 'ended') {
+            setTimeout(() => cleanup(), 1500)
+          }
+        })
+
+        unsubscribeRef.current.push(unsubIce, unsubCall)
+      } catch (e) {
+        // Most likely getUserMedia failing (e.g. mic blocked when answered while
+        // locked). Record it so it's visible, and clean up so we don't hang.
+        dbg('accept:error:' + String((e as Error)?.message ?? e).slice(0, 80))
+        cleanup()
+      }
     },
     [setIncomingCall, setLocalStream, setRemoteStream, setPeerConnection, setActiveCall, cleanup]
   )

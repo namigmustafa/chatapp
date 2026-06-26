@@ -146,3 +146,11 @@ export const subscribeIncomingCalls = (
 export const cleanupCall = async (callId: string) => {
   await deleteDoc(doc(db, CALLS, callId))
 }
+
+// Diagnostic: record how far the callee's answer flow got, readable in the
+// Firestore console (calls/{id}.calleeDebug). Best-effort, never throws.
+export const writeCalleeDebug = async (callId: string, stage: string) => {
+  try {
+    await updateDoc(doc(db, CALLS, callId), { calleeDebug: stage })
+  } catch { /* ignore */ }
+}
