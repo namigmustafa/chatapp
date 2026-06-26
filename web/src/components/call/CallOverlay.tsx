@@ -136,47 +136,19 @@ export default function CallOverlay() {
   // from Firestore by id so we still write the WebRTC answer and the caller connects.
   useEffect(() => {
     if (!pendingCallKitAction) return
-    let cancelled = false
-    const removers: Array<() => void> = []
-    const cleanup = () => { removers.forEach((r) => r()); removers.length = 0 }
-
-    const clearPending = () => {
-      setPendingCallKitAction(null)
-      setPendingCallKitCallId(null)
-    }
-
-    // Answering needs the mic (getUserMedia), which iOS blocks while the screen is
-    // locked / the web view is backgrounded — there it just hangs forever. Defer the
-    // answer until the app is actually foregrounded. Capacitor's appStateChange is the
-    // reliable iOS signal (the DOM 'visibilitychange' event is flaky in WKWebView).
-    const answerWhenForeground = (call: Call) => {
-      const attempt = () => {
-        if (cancelled) return false
-        if (document.visibilityState !== 'visible') return false
-        cleanup()
-        clearPending()
-        acceptCall(call)
-        return true
-      }
-      if (attempt()) return
-      const onVis = () => { attempt() }
-      document.addEventListener('visibilitychange', onVis)
-      removers.push(() => document.removeEventListener('visibilitychange', onVis))
-      ;(async () => {
-        const { App: CapApp } = await import('@capacitor/app')
-        const listener = await CapApp.addListener('appStateChange', ({ isActive }) => {
-          if (isActive) attempt()
-        })
-        if (cancelled) { listener.remove(); return }
-        removers.push(() => listener.remove())
-      })()
-    }
 
     if (incomingCall) {
-      if (pendingCallKitAction === 'answer') answerWhenForeground(incomingCall)
-      else { declineCall(incomingCall.id); clearPending() }
-    } else if (pendingCallKitAction === 'answer' && pendingCallKitCallId) {
-      // Recover the answer path when the call wasn't in memory (load it by id).
+      if (pendingCallKitAction === 'answer') acceptCall(incomingCall)
+      else declineCall(incomingCall.id)
+      setPendingCallKitAction(null)
+      setPendingCallKitCallId(null)
+      return
+    }
+
+    // Decline without an in-memory call is handled in useIncomingCalls (rejectCall).
+    // Here we only need to recover the ANSWER path by loading the call by id.
+    if (pendingCallKitAction === 'answer' && pendingCallKitCallId) {
+      let cancelled = false
       ;(async () => {
         try {
           const { doc, getDoc } = await import('firebase/firestore')
@@ -184,15 +156,17 @@ export default function CallOverlay() {
           const snap = await getDoc(doc(db, 'calls', pendingCallKitCallId))
           if (cancelled || !snap.exists()) return
           const call = { id: snap.id, ...snap.data() } as Call
-          if (call.offer && call.status === 'ringing') answerWhenForeground(call)
-          else clearPending()
-        } catch { /* keep pending; effect will re-run */ }
+          if (call.offer && call.status === 'ringing') acceptCall(call)
+        } catch {}
+        if (!cancelled) {
+          setPendingCallKitAction(null)
+          setPendingCallKitCallId(null)
+        }
       })()
+      return () => { cancelled = true }
     }
-    // else: no call yet — wait for incomingCall to arrive (don't clear the action)
-
-    return () => { cancelled = true; cleanup() }
-  }, [pendingCallKitAction, incomingCall, pendingCallKitCallId, acceptCall, declineCall, setPendingCallKitAction, setPendingCallKitCallId])
+    // else: wait for incomingCall to arrive (don't clear the pending action yet)
+  }, [pendingCallKitAction, incomingCall, pendingCallKitCallId])
 
   // Ringtone while incoming call is showing (not on iOS — CallKit plays its own ringtone)
   useEffect(() => {
