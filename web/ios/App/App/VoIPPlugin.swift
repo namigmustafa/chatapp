@@ -3,7 +3,20 @@ import Foundation
 import UIKit
 
 @objc(VoIPPlugin)
-public class VoIPPlugin: CAPPlugin {
+public class VoIPPlugin: CAPPlugin, CAPBridgedPlugin {
+
+    // Capacitor 7+ discovers plugins and their methods through CAPBridgedPlugin.
+    // Without these declarations the JS bridge reports
+    // "VoIPPlugin plugin is not implemented on iOS" even though VoIPPlugin.m's
+    // CAP_PLUGIN macro registers the class — so register()/listeners never reach
+    // native, the VoIP token is never stored, and CallKit never shows.
+    public let identifier = "VoIPPlugin"
+    public let jsName = "VoIPPlugin"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "register", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getStartupConversation", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "endCall", returnType: CAPPluginReturnPromise),
+    ]
 
     public override func load() {
         NotificationCenter.default.addObserver(
