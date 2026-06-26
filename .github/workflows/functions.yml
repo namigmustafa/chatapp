@@ -32,4 +32,5 @@ jobs:
         run: |
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          echo "::notice title=Deployer service account::$(node -p "require('$RUNNER_TEMP/sa.json').client_email")"
           npx -y firebase-tools deploy --only functions --project chatapp-48786 --non-interactive
