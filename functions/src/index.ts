@@ -84,9 +84,12 @@ export const onCallCreated = onDocumentCreated(
     // ── iOS VoIP push via APNs (wakes app from killed state, shows CallKit UI) ──
     const voipDoc = await db.doc(`voipTokens/${call.calleeUserId}`).get()
     const voipToken = voipDoc.exists ? (voipDoc.data()?.ios as string | undefined) : undefined
-    const pk = APNS_PRIVATE_KEY.value()
-    const ki = APNS_KEY_ID.value()
-    const ti = APNS_TEAM_ID.value()
+    // The .p8 secret often comes back with literal "\n" instead of real newlines,
+    // which makes OpenSSL 3 (Node 20) fail to decode the key (ERR_OSSL_UNSUPPORTED).
+    // Normalize escaped newlines and strip surrounding quotes/whitespace.
+    const pk = APNS_PRIVATE_KEY.value().replace(/\\n/g, '\n').replace(/^"|"$/g, '').trim()
+    const ki = APNS_KEY_ID.value().trim()
+    const ti = APNS_TEAM_ID.value().trim()
 
     // Preflight: tells us instantly whether the problem is a missing token
     // (device side), missing secrets (config), or something later (APNs reject).
