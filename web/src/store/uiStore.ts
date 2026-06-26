@@ -12,10 +12,12 @@ interface UIState {
   callFromBackground: boolean
   toast: ToastNotif | null
   pendingCallKitAction: 'answer' | 'decline' | null
+  pendingCallKitCallId: string | null
   setActiveConvId: (id: string | null) => void
   setCallFromBackground: (val: boolean) => void
   setToast: (toast: ToastNotif | null) => void
   setPendingCallKitAction: (action: 'answer' | 'decline' | null) => void
+  setPendingCallKitCallId: (id: string | null) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -23,8 +25,10 @@ export const useUIStore = create<UIState>((set) => ({
   callFromBackground: false,
   toast: null,
   pendingCallKitAction: null,
+  pendingCallKitCallId: null,
   setActiveConvId: (id) => set({ activeConvId: id }),
   setCallFromBackground: (val) => set({ callFromBackground: val }),
   setToast: (toast) => set({ toast }),
   setPendingCallKitAction: (action) => set({ pendingCallKitAction: action }),
+  setPendingCallKitCallId: (id) => set({ pendingCallKitCallId: id }),
 }))

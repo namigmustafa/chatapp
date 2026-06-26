@@ -7,6 +7,7 @@ import { useWebRTC } from '@/hooks/useWebRTC'
 import AliasAvatar from '@/components/ui/AliasAvatar'
 import { startRingtone } from '@/utils/notificationSound'
 import IncomingCallBanner from './IncomingCallBanner'
+import type { Call } from '@/types'
 
 // ── SVG icons ──────────────────────────────────────────────────────────────
 function PhoneIcon() {
@@ -120,7 +121,7 @@ export default function CallOverlay() {
     toggleVideo,
   } = useCallStore()
   const { user } = useAuthStore()
-  const { pendingCallKitAction, setPendingCallKitAction } = useUIStore()
+  const { pendingCallKitAction, setPendingCallKitAction, pendingCallKitCallId, setPendingCallKitCallId } = useUIStore()
   const { acceptCall, declineCall, hangUp } = useWebRTC()
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -129,16 +130,43 @@ export default function CallOverlay() {
 
   const timer = useCallTimer(activeCall?.status === 'active')
 
-  // Handle CallKit answer/decline actions from the iOS lock screen
+  // Handle CallKit answer/decline actions from the iOS lock screen.
+  // If the call object is already in memory (incomingCall), act on it directly.
+  // Otherwise — answered from CallKit while the app wasn't holding the call — load it
+  // from Firestore by id so we still write the WebRTC answer and the caller connects.
   useEffect(() => {
-    if (!pendingCallKitAction || !incomingCall) return
-    if (pendingCallKitAction === 'answer') {
-      acceptCall(incomingCall)
-    } else {
-      declineCall(incomingCall.id)
+    if (!pendingCallKitAction) return
+
+    if (incomingCall) {
+      if (pendingCallKitAction === 'answer') acceptCall(incomingCall)
+      else declineCall(incomingCall.id)
+      setPendingCallKitAction(null)
+      setPendingCallKitCallId(null)
+      return
     }
-    setPendingCallKitAction(null)
-  }, [pendingCallKitAction, incomingCall])
+
+    // Decline without an in-memory call is handled in useIncomingCalls (rejectCall).
+    // Here we only need to recover the ANSWER path by loading the call by id.
+    if (pendingCallKitAction === 'answer' && pendingCallKitCallId) {
+      let cancelled = false
+      ;(async () => {
+        try {
+          const { doc, getDoc } = await import('firebase/firestore')
+          const { db } = await import('@/services/firebase')
+          const snap = await getDoc(doc(db, 'calls', pendingCallKitCallId))
+          if (cancelled || !snap.exists()) return
+          const call = { id: snap.id, ...snap.data() } as Call
+          if (call.offer && call.status === 'ringing') acceptCall(call)
+        } catch {}
+        if (!cancelled) {
+          setPendingCallKitAction(null)
+          setPendingCallKitCallId(null)
+        }
+      })()
+      return () => { cancelled = true }
+    }
+    // else: wait for incomingCall to arrive (don't clear the pending action yet)
+  }, [pendingCallKitAction, incomingCall, pendingCallKitCallId])
 
   // Ringtone while incoming call is showing (not on iOS — CallKit plays its own ringtone)
   useEffect(() => {

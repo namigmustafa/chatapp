@@ -69,6 +69,13 @@ public class VoIPPlugin: CAPPlugin, CAPBridgedPlugin {
             UserDefaults.standard.removeObject(forKey: "voip_call_answered")
         }
 
+        // The call id the user answered from CallKit — lets JS load the call and write
+        // the WebRTC answer even if the call was never held in memory.
+        if let answeredCallId = UserDefaults.standard.string(forKey: "voip_answered_call_id"), !answeredCallId.isEmpty {
+            result["pendingAnswerCallId"] = answeredCallId
+            UserDefaults.standard.removeObject(forKey: "voip_answered_call_id")
+        }
+
         // Return and clear a declined call id (user declined from CallKit while JS wasn't
         // running) so JS can mark it 'rejected' in Firestore and update the caller.
         if let declinedCallId = UserDefaults.standard.string(forKey: "voip_declined_call_id"), !declinedCallId.isEmpty {

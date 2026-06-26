@@ -110,6 +110,9 @@ export const useIncomingCalls = () => {
 
           // User answered a call from the CallKit UI before JS was ready
           if (result.pendingAnswer) {
+            if (result.pendingAnswerCallId) {
+              useUIStore.getState().setPendingCallKitCallId(result.pendingAnswerCallId)
+            }
             setPendingCallKitAction('answer')
           }
 
@@ -144,7 +147,8 @@ export const useIncomingCalls = () => {
         removers.push(() => regListener.remove())
 
         // User answered from CallKit lock-screen UI
-        const answerListener = await VoIPPlugin.addListener('callAnswered', () => {
+        const answerListener = await VoIPPlugin.addListener('callAnswered', ({ callId }) => {
+          if (callId) useUIStore.getState().setPendingCallKitCallId(callId)
           setPendingCallKitAction('answer')
         })
         removers.push(() => answerListener.remove())

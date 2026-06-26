@@ -138,8 +138,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         try? session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
         try? session.setActive(true)
         activeCallAnswered = true
-        // Persist the answered flag so JS can retrieve it if the app was not yet ready
+        // Persist the answered flag + call id so JS can complete the answer (write the
+        // WebRTC answer to Firestore) even if it wasn't holding the call in memory.
         UserDefaults.standard.set(true, forKey: "voip_call_answered")
+        if let callId = activeCallId, !callId.isEmpty {
+            UserDefaults.standard.set(callId, forKey: "voip_answered_call_id")
+        }
         NotificationCenter.default.post(
             name: Notification.Name("VoIPCallAnswered"),
             object: nil,
