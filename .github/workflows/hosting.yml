@@ -35,13 +35,25 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
         run: npm run build
 
-      # Deploy via the Firebase CLI (same service account as functions). Unlike
-      # action-hosting-deploy, `firebase deploy --only hosting` does not hard-fail
-      # when the built content is identical to the current live version.
+      # Deploy via the Firebase CLI (same service account as functions). Both the CLI
+      # and action-hosting-deploy hard-fail when the built content is byte-identical to
+      # the current live version ("supplied version is the current active version").
+      # That's a benign no-op — the site is already current — so treat only that case
+      # as success and let any other error fail the job.
       - name: Deploy hosting
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
-          npx -y firebase-tools deploy --only hosting --project chatapp-48786 --non-interactive
+          set +e
+          OUT=$(npx -y firebase-tools deploy --only hosting --project chatapp-48786 --non-interactive 2>&1)
+          CODE=$?
+          echo "$OUT"
+          if [ $CODE -ne 0 ]; then
+            if echo "$OUT" | grep -q "current active version"; then
+              echo "Hosting content unchanged — already the live version. Treating as success."
+              exit 0
+            fi
+            exit $CODE
+          fi
