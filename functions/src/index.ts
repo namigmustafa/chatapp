@@ -130,49 +130,55 @@ export const onCallCreated = onDocumentCreated(
     // FCM is only a fallback for platforms without a VoIP token (Android / web).
     if (voipToken) return
 
-    // ── FCM push (Android + web fallback) ──
+    // ── FCM push ──
     const tokenDoc = await db.doc(`fcmTokens/${call.calleeUserId}`).get()
     if (!tokenDoc.exists) return
     const tokenData = tokenDoc.data()!
-    const tokens = getTokens(tokenData)
-    if (tokens.length === 0) return
-
-    const result = await messaging.sendEachForMulticast({
-      tokens,
-      notification: { title, body },
-      data: {
-        type: 'incoming_call',
-        callId,
-        callType: call.type,
-        callerUserId: call.callerUserId,
-      },
-      apns: {
-        payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } },
-      },
-      android: {
-        notification: { sound: 'default', channelId: 'calls', priority: 'high' },
-        priority: 'high',
-      },
-      webpush: {
-        fcmOptions: { link: '/' },
-        notification: {
-          icon: '/favicon.svg',
-          requireInteraction: true,
-          actions: [
-            { action: 'answer', title: 'Answer' },
-            { action: 'reject', title: 'Decline' },
-          ],
-        },
-      },
-    })
-
     const failed = new Set<string>()
-    result.responses.forEach((r, i) => {
-      if (!r.success && (
-        r.error?.code === 'messaging/registration-token-not-registered' ||
-        r.error?.code === 'messaging/invalid-registration-token'
-      )) failed.add(tokens[i])
-    })
+
+    // Android native token → data-only so AppFirebaseMessagingService shows the
+    // full-screen call UI. A notification key would bypass onMessageReceived in background.
+    if (tokenData.native && typeof tokenData.native === 'string') {
+      const androidResult = await messaging.send({
+        token: tokenData.native,
+        data: {
+          type: 'incoming_call',
+          callId,
+          callType: call.type,
+          callerUserId: call.callerUserId,
+          callerName,
+        },
+        android: { priority: 'high' },
+      })
+      console.log('[FCM] android native result:', androidResult)
+    }
+
+    // Web token → notification + data (browser handles display via service worker)
+    if (tokenData.web && typeof tokenData.web === 'string') {
+      const webResult = await messaging.send({
+        token: tokenData.web,
+        notification: { title, body },
+        data: {
+          type: 'incoming_call',
+          callId,
+          callType: call.type,
+          callerUserId: call.callerUserId,
+        },
+        webpush: {
+          fcmOptions: { link: '/' },
+          notification: {
+            icon: '/favicon.svg',
+            requireInteraction: true,
+            actions: [
+              { action: 'answer', title: 'Answer' },
+              { action: 'reject', title: 'Decline' },
+            ],
+          },
+        },
+      })
+      console.log('[FCM] web result:', webResult)
+    }
+
     if (failed.size > 0) await pruneExpiredTokens(call.calleeUserId, tokenData, failed)
   }
 )

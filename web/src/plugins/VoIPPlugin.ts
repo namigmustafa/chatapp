@@ -14,6 +14,9 @@ export interface VoIPRegistrationResult {
   pendingAnswer?: boolean
   pendingAnswerCallId?: string
   pendingDeclineCallId?: string
+  // Android: action stored by CallActivity (answer/decline from lock screen)
+  pendingCallAction?: 'answer' | 'decline'
+  pendingCallId?: string
 }
 
 export interface VoIPPluginDefinition {

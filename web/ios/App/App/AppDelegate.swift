@@ -134,21 +134,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
     }
 
     func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
-        try? session.setActive(true)
         activeCallAnswered = true
-        // Persist the answered flag + call id so JS can complete the answer (write the
-        // WebRTC answer to Firestore) even if it wasn't holding the call in memory.
         UserDefaults.standard.set(true, forKey: "voip_call_answered")
         if let callId = activeCallId, !callId.isEmpty {
             UserDefaults.standard.set(callId, forKey: "voip_answered_call_id")
         }
-        NotificationCenter.default.post(
-            name: Notification.Name("VoIPCallAnswered"),
-            object: nil,
-            userInfo: ["callUUID": action.callUUID.uuidString, "callId": activeCallId ?? ""]
-        )
+        // Do NOT configure AVAudioSession here — CallKit hasn't activated it yet.
+        // Audio setup and JS notification happen in didActivate audioSession below.
         action.fulfill()
     }
 
@@ -177,7 +169,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         action.fulfill()
     }
 
-    func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {}
+    func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
+        // CallKit has activated the audio session — safe to configure it and start WebRTC.
+        try? audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
+        try? audioSession.setActive(true)
+        NotificationCenter.default.post(
+            name: Notification.Name("VoIPCallAnswered"),
+            object: nil,
+            userInfo: ["callId": activeCallId ?? ""]
+        )
+    }
     func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {}
 
     // Called from VoIPPlugin when the JS side ends or declines a call

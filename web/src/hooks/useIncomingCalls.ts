@@ -120,7 +120,7 @@ export const useIncomingCalls = () => {
   const activeCallRef = useRef(activeCall)
   activeCallRef.current = activeCall
 
-  // Register push tokens (FCM for all platforms, VoIP for iOS)
+  // Register push tokens (FCM for all platforms, VoIP for iOS, call actions for Android)
   useEffect(() => {
     if (!user?.uid) return
     registerPushToken(user.uid)
@@ -141,16 +141,43 @@ export const useIncomingCalls = () => {
             setPendingCallKitAction('answer')
           }
 
-          // User declined from CallKit while JS wasn't running — mark the call
-          // 'rejected' now so the caller's device stops ringing.
+          // User declined from CallKit while JS wasn't running
           if (result.pendingDeclineCallId) {
             rejectCall(result.pendingDeclineCallId).catch(() => {})
           }
-
-          // Call arrived while app was killed — Firestore subscription will surface it.
-          // pendingAnswer above handles the case where user already swiped to answer.
         } catch {}
       })()
+    }
+
+    if (Capacitor.getPlatform() === 'android') {
+      ;(async () => {
+        try {
+          const { VoIPPlugin } = await import('@/plugins/VoIPPlugin')
+          const result = await VoIPPlugin.register()
+          // User answered or declined from the lock-screen CallActivity
+          if (result.pendingCallAction === 'answer') {
+            if (result.pendingCallId) {
+              useUIStore.getState().setPendingCallKitCallId(result.pendingCallId)
+            }
+            setPendingCallKitAction('answer')
+          } else if (result.pendingCallAction === 'decline' && result.pendingCallId) {
+            rejectCall(result.pendingCallId).catch(() => {})
+          }
+        } catch {}
+      })()
+
+      // Also handle the case where the app was already running when CallActivity fired
+      const handler = (e: Event) => {
+        const { action, callId } = (e as CustomEvent).detail ?? {}
+        if (action === 'answer') {
+          if (callId) useUIStore.getState().setPendingCallKitCallId(callId)
+          setPendingCallKitAction('answer')
+        } else if (action === 'decline' && callId) {
+          rejectCall(callId).catch(() => {})
+        }
+      }
+      window.addEventListener('nativeCallAction', handler)
+      return () => window.removeEventListener('nativeCallAction', handler)
     }
   }, [user?.uid])
 
