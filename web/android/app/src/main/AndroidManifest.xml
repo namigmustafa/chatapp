@@ -34,10 +34,12 @@
             android:launchMode="singleTop"
             android:theme="@style/Theme.AppCompat.NoActionBar" />
 
-        <!-- Replace the Capacitor Firebase Messaging service with ours so we can
-             intercept incoming_call data messages and show a full-screen intent. -->
+        <!-- Replace the Capacitor Firebase Messaging service (class name: MessagingService)
+             with ours. AppFirebaseMessagingService EXTENDS it, so token refresh and
+             foreground events still reach the JS plugin, while we intercept incoming_call
+             data messages to show a full-screen intent on the lock screen. -->
         <service
-            android:name="io.capawesome.capacitorjs.plugins.firebase.messaging.FirebaseMessagingService"
+            android:name="io.capawesome.capacitorjs.plugins.firebase.messaging.MessagingService"
             tools:node="remove" />
         <service
             android:name=".AppFirebaseMessagingService"
