@@ -5,6 +5,29 @@ import { useCallStore } from '@/store/callStore'
 import { useUIStore } from '@/store/uiStore'
 import { subscribeIncomingCalls, rejectCall } from '@/services/webrtc'
 
+async function ensureAndroidChannels() {
+  if (Capacitor.getPlatform() !== 'android') return
+  try {
+    const { FirebaseMessaging } = await import('@capacitor-firebase/messaging')
+    await FirebaseMessaging.createChannel({
+      id: 'messages',
+      name: 'Messages',
+      description: 'New message notifications',
+      importance: 4, // HIGH
+      sound: 'default',
+      vibration: true,
+    })
+    await FirebaseMessaging.createChannel({
+      id: 'calls',
+      name: 'Calls',
+      description: 'Incoming call notifications',
+      importance: 5, // MAX
+      sound: 'default',
+      vibration: true,
+    })
+  } catch {}
+}
+
 async function registerPushToken(userId: string) {
   if (!Capacitor.isNativePlatform()) {
     if ('Notification' in window && Notification.permission === 'default') {
@@ -12,6 +35,8 @@ async function registerPushToken(userId: string) {
     }
     return
   }
+
+  await ensureAndroidChannels()
 
   const { FirebaseMessaging } = await import('@capacitor-firebase/messaging')
   const { receive } = await FirebaseMessaging.requestPermissions()
