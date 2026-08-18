@@ -4,6 +4,7 @@ import Firebase
 import PushKit
 import CallKit
 import AVFoundation
+import NativeWebRTCPlugin
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, CXProviderDelegate {
@@ -24,6 +25,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         // `notificationActionPerformed` event. Overriding it kills notification-tap
         // routing — message taps would never reach the WebView.
         FirebaseApp.configure()
+
+        // Must happen before any call can arrive — puts WebRTC's audio session
+        // handling into manual mode so only CallKit's didActivate/didDeactivate
+        // (relayed below) ever turn its audio I/O on, never WebKit's own session.
+        CallEngine.configureAudioSession()
 
         setupCallKit()
         setupVoIPPushRegistry()
@@ -157,6 +163,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         // Audio setup and JS notification happen in didActivate audioSession below.
         action.fulfill()
         DispatchQueue.main.async { self.wakeWebView() }
+
+        // Kick off the ENTIRE call natively (offer fetch, answer, ICE, audio) —
+        // no dependency on the WebView/JS layer at all. This runs in parallel with
+        // CallKit's own audio session activation below; the peer connection and
+        // signaling don't need an active audio session to start negotiating.
+        if let callId = activeCallId, !callId.isEmpty {
+            CallEngine.shared.answerCall(callId: callId)
+        }
     }
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
@@ -178,6 +192,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
                 "answered": activeCallAnswered,
             ]
         )
+        CallEngine.shared.endCall()
         activeCallUUID = nil
         activeCallId = nil
         activeCallAnswered = false
@@ -189,9 +204,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         // session, and what app state were we in — to correlate with the JS-side hang.
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "voip_audio_activated_at")
         UserDefaults.standard.set(UIApplication.shared.applicationState.rawValue, forKey: "voip_audio_activated_app_state")
-        // CallKit has activated the audio session — safe to configure it and start WebRTC.
+        // CallKit has activated the audio session — safe to configure it.
         try? audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
         try? audioSession.setActive(true)
+        // Tell WebRTC's (manual-mode) audio session it's now live — this is what
+        // actually lets the native call engine's audio track start playing/recording.
+        CallEngine.shared.audioSessionDidActivate(audioSession)
         DispatchQueue.main.async { self.wakeWebView() }
         NotificationCenter.default.post(
             name: Notification.Name("VoIPCallAnswered"),
@@ -199,7 +217,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
             userInfo: ["callId": activeCallId ?? ""]
         )
     }
-    func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {}
+    func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+        CallEngine.shared.audioSessionDidDeactivate(audioSession)
+    }
 
     // Called from VoIPPlugin when the JS side ends or declines a call
     func endCallKitCall() {

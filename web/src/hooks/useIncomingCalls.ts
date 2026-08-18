@@ -4,6 +4,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useCallStore } from '@/store/callStore'
 import { useUIStore } from '@/store/uiStore'
 import { subscribeIncomingCalls, rejectCall, writeCalleeDebug } from '@/services/webrtc'
+import type { User } from 'firebase/auth'
 
 async function ensureAndroidChannels() {
   if (Capacitor.getPlatform() !== 'android') return
@@ -76,6 +77,19 @@ async function clearDeliveredNotifications() {
   } catch {}
 }
 
+// Hands a fresh ID token to the native call engine so it can authenticate its
+// own Firestore REST calls when CallKit answers while the WebView is asleep.
+// Must be refreshed on every resume — ID tokens expire after ~1h and a call
+// could arrive after the app's been backgrounded far longer than that.
+async function syncAuthTokenToNative(user: User) {
+  if (Capacitor.getPlatform() !== 'ios') return
+  try {
+    const token = await user.getIdToken()
+    const { NativeWebRTCPlugin } = await import('@/plugins/NativeWebRTCPlugin')
+    await NativeWebRTCPlugin.setAuthToken({ token })
+  } catch {}
+}
+
 async function storeVoIPToken(userId: string, token: string) {
   try {
     const { doc, setDoc } = await import('firebase/firestore')
@@ -89,13 +103,14 @@ async function storeVoIPToken(userId: string, token: string) {
 // never delivered the live 'callAnswered'/'callEnded' NotificationCenter event.
 // Must run on EVERY foreground transition, not just app boot — the live listener
 // can silently miss the event if the JS realm was suspended when CallKit fired it.
-async function checkPendingIOSCallAction(userId: string) {
+async function checkPendingIOSCallAction(user: User) {
   if (Capacitor.getPlatform() !== 'ios') return
+  syncAuthTokenToNative(user)
   try {
     const { VoIPPlugin } = await import('@/plugins/VoIPPlugin')
     const result = await VoIPPlugin.register()
 
-    if (result.token) await storeVoIPToken(userId, result.token)
+    if (result.token) await storeVoIPToken(user.uid, result.token)
 
     if (result.pendingAnswer) {
       if (result.pendingAnswerCallId) {
@@ -170,7 +185,7 @@ export const useIncomingCalls = () => {
     registerPushToken(user.uid)
 
     if (Capacitor.getPlatform() === 'ios') {
-      checkPendingIOSCallAction(user.uid)
+      checkPendingIOSCallAction(user)
     }
 
     if (Capacitor.getPlatform() === 'android') {
@@ -289,7 +304,7 @@ export const useIncomingCalls = () => {
         await clearDeliveredNotifications()
         // Catches an answer/decline that CallKit delivered while the WebView's JS
         // was suspended — the live listener can miss it, so re-check on every resume.
-        await checkPendingIOSCallAction(user.uid!)
+        await checkPendingIOSCallAction(user!)
       })
       removeAppListener = () => appListener.remove()
     })()
