@@ -174,12 +174,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
     }
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
-        // Persist the declined call id so JS can mark it 'rejected' in Firestore even
-        // if the app wasn't running when the user declined from CallKit. Only do this
-        // when the call was NOT answered — otherwise this is a normal hang-up, not a
-        // rejection, and we'd wrongly overwrite an answered/ended call as 'rejected'.
-        if !activeCallAnswered, let callId = activeCallId, !callId.isEmpty {
-            UserDefaults.standard.set(callId, forKey: "voip_declined_call_id")
+        // Write the outcome to Firestore directly — waiting for the WebView/JS to
+        // wake up and call rejectCall()/endCall() itself isn't reliable while
+        // locked/backgrounded (same reasoning as answerCall()), which left the
+        // caller ringing until the 30s timeout instead of seeing the decline/hangup.
+        if let callId = activeCallId, !callId.isEmpty {
+            if !activeCallAnswered {
+                UserDefaults.standard.set(callId, forKey: "voip_declined_call_id")
+                CallEngine.shared.declineCall(callId: callId)
+            } else {
+                CallEngine.shared.hangUpAnsweredCall(callId: callId)
+            }
         }
         NotificationCenter.default.post(
             name: Notification.Name("VoIPCallEnded"),

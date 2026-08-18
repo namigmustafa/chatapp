@@ -137,6 +137,21 @@ public final class CallEngine: NSObject {
         }
     }
 
+    /// Called from CXEndCallAction when the user declines from the CallKit UI
+    /// (locked/backgrounded) before ever answering. Writes 'rejected' directly —
+    /// same reasoning as answerCall(): waiting for the WebView/JS to wake up and
+    /// call rejectCall() itself is not reliable while locked, so the caller would
+    /// otherwise just ring until the 30s timeout marks it 'missed' instead.
+    public func declineCall(callId: String) {
+        Task { try? await FirestoreClient.updateDocument(path: "calls/\(callId)", fields: ["status": "rejected"]) }
+    }
+
+    /// Same reasoning, for hanging up a call that WAS answered natively — the
+    /// caller must not be left thinking the call is still active.
+    public func hangUpAnsweredCall(callId: String) {
+        Task { try? await FirestoreClient.updateDocument(path: "calls/\(callId)", fields: ["status": "ended"]) }
+    }
+
     public func endCall() {
         candidatePollTimer?.invalidate()
         candidatePollTimer = nil
