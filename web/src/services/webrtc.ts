@@ -11,15 +11,18 @@ import {
   where,
 } from 'firebase/firestore'
 import type { Unsubscribe } from 'firebase/firestore'
-import { db } from './firebase'
+import { auth, db } from './firebase'
 import type { Call, CallType, IceCandidate } from '@/types'
 
 const CALLS = 'calls'
 
-const ICE_SERVERS: RTCIceServer[] = [
+// Last-resort fallback if getIceServers() can't be reached (offline function,
+// cold-start timeout, etc.) — better than no TURN at all, even though the
+// shared public demo relay is unreliable. The real path fetches a private,
+// short-lived credential per call from our own Cloud Function.
+const FALLBACK_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  // Free TURN relay — needed for NAT/mobile networks where STUN alone fails
   {
     urls: 'turn:openrelay.metered.ca:80',
     username: 'openrelayproject',
@@ -37,8 +40,25 @@ const ICE_SERVERS: RTCIceServer[] = [
   },
 ]
 
-export const createPeerConnection = () => {
-  return new RTCPeerConnection({ iceServers: ICE_SERVERS })
+const ICE_SERVERS_ENDPOINT = 'https://us-central1-chatapp-48786.cloudfunctions.net/getIceServers'
+
+export const fetchIceServers = async (): Promise<RTCIceServer[]> => {
+  try {
+    const token = await auth.currentUser?.getIdToken()
+    if (!token) return FALLBACK_ICE_SERVERS
+    const resp = await fetch(ICE_SERVERS_ENDPOINT, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!resp.ok) return FALLBACK_ICE_SERVERS
+    const data = (await resp.json()) as { iceServers?: RTCIceServer[] }
+    return data.iceServers?.length ? data.iceServers : FALLBACK_ICE_SERVERS
+  } catch {
+    return FALLBACK_ICE_SERVERS
+  }
+}
+
+export const createPeerConnection = (iceServers: RTCIceServer[]) => {
+  return new RTCPeerConnection({ iceServers })
 }
 
 export const initiateCall = async (

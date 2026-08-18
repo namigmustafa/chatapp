@@ -15,13 +15,47 @@ import WebRTC
 public final class CallEngine: NSObject {
     public static let shared = CallEngine()
 
-    private static let iceServers: [RTCIceServer] = [
+    // Last-resort fallback if getIceServers() can't be reached — the shared
+    // public demo relay is unreliable, but still better than STUN-only.
+    private static let fallbackIceServers: [RTCIceServer] = [
         RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"]),
         RTCIceServer(urlStrings: ["stun:stun1.l.google.com:19302"]),
         RTCIceServer(urlStrings: ["turn:openrelay.metered.ca:80"], username: "openrelayproject", credential: "openrelayproject"),
         RTCIceServer(urlStrings: ["turn:openrelay.metered.ca:443"], username: "openrelayproject", credential: "openrelayproject"),
         RTCIceServer(urlStrings: ["turn:openrelay.metered.ca:443?transport=tcp"], username: "openrelayproject", credential: "openrelayproject"),
     ]
+
+    private static let iceServersEndpoint = URL(string: "https://us-central1-chatapp-48786.cloudfunctions.net/getIceServers")!
+
+    // Mirrors web/src/services/webrtc.ts's fetchIceServers() — same Cloud
+    // Function, same reasoning (short-lived, private TURN credentials instead
+    // of a hardcoded shared secret in the app binary).
+    private static func fetchIceServers() async -> [RTCIceServer] {
+        guard let token = UserDefaults.standard.string(forKey: "firebase_id_token"), !token.isEmpty else {
+            return fallbackIceServers
+        }
+        do {
+            var req = URLRequest(url: iceServersEndpoint)
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            let (data, response) = try await URLSession.shared.data(for: req)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return fallbackIceServers
+            }
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let entries = json["iceServers"] as? [[String: Any]], !entries.isEmpty else {
+                return fallbackIceServers
+            }
+            return entries.map { entry in
+                let urls = entry["urls"] as? String ?? ""
+                if let username = entry["username"] as? String, let credential = entry["credential"] as? String {
+                    return RTCIceServer(urlStrings: [urls], username: username, credential: credential)
+                }
+                return RTCIceServer(urlStrings: [urls])
+            }
+        } catch {
+            return fallbackIceServers
+        }
+    }
 
     private let factory: RTCPeerConnectionFactory = {
         RTCInitializeSSL()
@@ -99,7 +133,8 @@ public final class CallEngine: NSObject {
                 dbg("gotOffer")
 
                 let config = RTCConfiguration()
-                config.iceServers = Self.iceServers
+                config.iceServers = await Self.fetchIceServers()
+                dbg("gotIceServers")
                 config.sdpSemantics = .unifiedPlan
                 let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
                 guard let pc = factory.peerConnection(with: config, constraints: constraints, delegate: self) else {

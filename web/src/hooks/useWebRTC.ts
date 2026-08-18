@@ -3,6 +3,7 @@ import { useCallStore } from '@/store/callStore'
 import { useAuthStore } from '@/store/authStore'
 import {
   createPeerConnection,
+  fetchIceServers,
   initiateCall,
   answerCall,
   rejectCall,
@@ -95,7 +96,8 @@ export const useWebRTC = () => {
     async (callerAliasId: string, calleeAliasId: string, calleeUserId: string, type: CallType, conversationId: string) => {
       if (!user) return
 
-      const pc = createPeerConnection()
+      const iceServers = await fetchIceServers()
+      const pc = createPeerConnection(iceServers)
       pcRef.current = pc
       const stream = await getMediaStream(type)
       setLocalStream(stream)
@@ -178,7 +180,9 @@ export const useWebRTC = () => {
       const dbg = (stage: string) => { void writeCalleeDebug(call.id, stage) }
       try {
         dbg('accept:start')
-        const pc = createPeerConnection()
+        const iceServers = await fetchIceServers()
+        dbg('accept:gotIceServers')
+        const pc = createPeerConnection(iceServers)
         pcRef.current = pc
         pc.oniceconnectionstatechange = () => dbg('iceState:' + pc.iceConnectionState)
         pc.onconnectionstatechange = () => dbg('connState:' + pc.connectionState)

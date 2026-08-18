@@ -1,5 +1,6 @@
 import * as admin from 'firebase-admin'
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore'
+import { onRequest } from 'firebase-functions/v2/https'
 import { FieldValue } from 'firebase-admin/firestore'
 import { defineSecret } from 'firebase-functions/params'
 import * as apn from '@parse/node-apn'
@@ -11,7 +12,65 @@ const APNS_PRIVATE_KEY = defineSecret('APNS_PRIVATE_KEY')
 const APNS_KEY_ID      = defineSecret('APNS_KEY_ID')
 const APNS_TEAM_ID     = defineSecret('APNS_TEAM_ID')
 
+// metered.ca account secret — set via: firebase functions:secrets:set METERED_API_KEY
+// Never sent to clients; used server-side to mint short-lived TURN credentials.
+const METERED_API_KEY = defineSecret('METERED_API_KEY')
+const METERED_APP = 'inivochatapp'
+
 const BUNDLE_ID = 'app.chatapp.p2p'
+
+// Mints a fresh, short-lived TURN credential per request instead of handing
+// out a long-lived shared secret to clients (which both the web bundle and
+// the iOS binary can be inspected to extract). Requires a valid Firebase ID
+// token — same trust boundary as everything else callers/callees can reach.
+export const getIceServers = onRequest(
+  { secrets: [METERED_API_KEY], cors: true },
+  async (req, res) => {
+    const authHeader = req.headers.authorization ?? ''
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+    if (!token) {
+      res.status(401).json({ error: 'missing bearer token' })
+      return
+    }
+    try {
+      await admin.auth().verifyIdToken(token)
+    } catch {
+      res.status(401).json({ error: 'invalid token' })
+      return
+    }
+
+    try {
+      const metered = await fetch(
+        `https://${METERED_APP}.metered.live/api/v1/turn/credential?secretKey=${METERED_API_KEY.value()}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // 2h covers any realistic call duration plus setup/retry slack.
+          body: JSON.stringify({ expiryInSeconds: 7200, label: 'chatapp-call' }),
+        }
+      )
+      const cred = (await metered.json()) as { username?: string; password?: string }
+      if (!cred.username || !cred.password) {
+        res.status(502).json({ error: 'metered credential creation failed' })
+        return
+      }
+
+      res.json({
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun.relay.metered.ca:80' },
+          { urls: 'turn:global.relay.metered.ca:80', username: cred.username, credential: cred.password },
+          { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: cred.username, credential: cred.password },
+          { urls: 'turn:global.relay.metered.ca:443', username: cred.username, credential: cred.password },
+          { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: cred.username, credential: cred.password },
+        ],
+      })
+    } catch {
+      res.status(502).json({ error: 'metered request failed' })
+    }
+  }
+)
 
 async function sendVoIPPush(
   voipToken: string,
