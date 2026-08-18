@@ -139,7 +139,7 @@ public final class CallEngine: NSObject {
     // MARK: - Async wrappers around RTCPeerConnection's completion-handler APIs
 
     private func setRemoteDescription(_ pc: RTCPeerConnection, _ desc: RTCSessionDescription) async throws {
-        try await withCheckedThrowingContinuation { cont in
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             pc.setRemoteDescription(desc) { error in
                 if let error { cont.resume(throwing: error) } else { cont.resume() }
             }
@@ -147,7 +147,7 @@ public final class CallEngine: NSObject {
     }
 
     private func setLocalDescription(_ pc: RTCPeerConnection, _ desc: RTCSessionDescription) async throws {
-        try await withCheckedThrowingContinuation { cont in
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             pc.setLocalDescription(desc) { error in
                 if let error { cont.resume(throwing: error) } else { cont.resume() }
             }
@@ -186,14 +186,20 @@ public final class CallEngine: NSObject {
                 guard let candidateStr = doc["candidate"] as? String, let sdpMid = doc["sdpMid"] as? String else { continue }
                 let sdpMLineIndex = Int32(doc["sdpMLineIndex"] as? Int ?? 0)
                 let ice = RTCIceCandidate(sdp: candidateStr, sdpMLineIndex: sdpMLineIndex, sdpMid: sdpMid)
-                if remoteDescriptionSet, let pc { pc.add(ice) } else { pendingRemoteCandidates.append(ice) }
+                if remoteDescriptionSet, let pc {
+                    Task { try? await pc.add(ice) }
+                } else {
+                    pendingRemoteCandidates.append(ice)
+                }
             }
         }
     }
 
     private func flushPendingRemoteCandidates(_ pc: RTCPeerConnection) {
         remoteDescriptionSet = true
-        pendingRemoteCandidates.forEach { pc.add($0) }
+        for ice in pendingRemoteCandidates {
+            Task { try? await pc.add(ice) }
+        }
         pendingRemoteCandidates.removeAll()
     }
 }
@@ -207,21 +213,21 @@ extension FirestoreClient {
 // MARK: - RTCPeerConnectionDelegate
 
 extension CallEngine: RTCPeerConnectionDelegate {
-    func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {}
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {}
 
-    func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {}
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {}
 
-    func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {}
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {}
 
-    func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {}
+    public func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {}
 
-    func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {
         dbg("iceState:\(newState.debugName)")
     }
 
-    func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {}
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {}
 
-    func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
         guard let callId else { return }
         Task {
             try? await FirestoreClient.addDocument(collectionPath: "calls/\(callId)/calleeCandidates", fields: [
@@ -232,9 +238,9 @@ extension CallEngine: RTCPeerConnectionDelegate {
         }
     }
 
-    func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
 
-    func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
 }
 
 private extension RTCIceConnectionState {
