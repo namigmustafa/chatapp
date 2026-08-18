@@ -1,0 +1,14 @@
+{
+  "name": "chatapp-native-webrtc",
+  "version": "0.0.1",
+  "description": "Local Capacitor plugin: native WebRTC + CallKit audio session coordination for iOS",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "files": [
+    "ios/",
+    "Package.swift"
+  ]
+}

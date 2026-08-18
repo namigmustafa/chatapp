@@ -2,7 +2,7 @@ name: iOS → TestFlight
 
 on:
   push:
-    branches: [main]
+    branches: [main, native-ios-webrtc]
   workflow_dispatch:
 
 jobs:
