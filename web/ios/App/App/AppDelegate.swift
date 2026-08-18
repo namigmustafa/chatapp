@@ -30,6 +30,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         return true
     }
 
+    // MARK: - WebView wake
+
+    // WKWebView's JS engine can stay suspended for a beat after CallKit answers a
+    // locked-screen call — evaluating trivial JS forces WebKit to resume it instead
+    // of waiting for a full app-foreground transition that may not come quickly.
+    private func wakeWebView() {
+        guard let bridgeVC = window?.rootViewController as? CAPBridgeViewController else { return }
+        bridgeVC.bridge?.webView?.evaluateJavaScript("true", completionHandler: nil)
+    }
+
     // MARK: - CallKit setup
 
     private func setupCallKit() {
@@ -146,6 +156,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         // Do NOT configure AVAudioSession here — CallKit hasn't activated it yet.
         // Audio setup and JS notification happen in didActivate audioSession below.
         action.fulfill()
+        DispatchQueue.main.async { self.wakeWebView() }
     }
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
@@ -181,6 +192,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         // CallKit has activated the audio session — safe to configure it and start WebRTC.
         try? audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
         try? audioSession.setActive(true)
+        DispatchQueue.main.async { self.wakeWebView() }
         NotificationCenter.default.post(
             name: Notification.Name("VoIPCallAnswered"),
             object: nil,
