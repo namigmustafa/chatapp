@@ -47,6 +47,18 @@ public final class CallEngine: NSObject {
         let session = RTCAudioSession.sharedInstance()
         session.useManualAudio = true
         session.isAudioEnabled = false
+
+        // Without this, WebRTC's audio unit never actually gets the category/mode
+        // it needs — manual mode only stops WebRTC from activating a session, it
+        // doesn't configure one for you. This was missing, which is almost
+        // certainly why signaling connected but no audio played.
+        session.lockForConfiguration()
+        let config = RTCAudioSessionConfiguration.webRTC()
+        config.category = AVAudioSession.Category.playAndRecord.rawValue
+        config.mode = AVAudioSession.Mode.voiceChat.rawValue
+        config.categoryOptions = [.allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
+        try? session.setConfiguration(config)
+        session.unlockForConfiguration()
     }
 
     public func audioSessionDidActivate(_ audioSession: AVAudioSession) {

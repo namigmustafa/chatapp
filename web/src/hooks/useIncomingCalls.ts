@@ -315,19 +315,31 @@ export const useIncomingCalls = () => {
   // Firestore incoming call subscription
   useEffect(() => {
     if (!user) return
-    const unsub = subscribeIncomingCalls(user.uid, (call) => {
-      if (activeCall) return
+    const unsub = subscribeIncomingCalls(
+      user.uid,
+      (call) => {
+        if (activeCall) return
 
-      // Check if this call arrived after user tapped a background notification
-      const isFromBackground = useUIStore.getState().callFromBackground
-      useUIStore.getState().setCallFromBackground(false)
+        // Check if this call arrived after user tapped a background notification
+        const isFromBackground = useUIStore.getState().callFromBackground
+        useUIStore.getState().setCallFromBackground(false)
 
-      // foreground=true → compact banner, foreground=false → full-screen overlay
-      setIncomingCall(call, !isFromBackground)
+        // foreground=true → compact banner, foreground=false → full-screen overlay
+        setIncomingCall(call, !isFromBackground)
 
-      const callerName = call.callerAliasId || call.callerUserId
-      showCallNotification(callerName, call.type)
-    })
+        const callerName = call.callerAliasId || call.callerUserId
+        showCallNotification(callerName, call.type)
+      },
+      (callId) => {
+        // e.g. iOS CallEngine answered natively while this JS session wasn't
+        // running — clear the stale incoming-call screen so it doesn't sit
+        // there (and re-answer into a fresh, conflicting connection) once
+        // the app resumes.
+        if (useCallStore.getState().incomingCall?.id === callId) {
+          setIncomingCall(null)
+        }
+      }
+    )
     return unsub
   }, [user, activeCall, setIncomingCall])
 }

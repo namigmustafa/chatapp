@@ -135,7 +135,8 @@ export const subscribeIceCandidates = (
 
 export const subscribeIncomingCalls = (
   userId: string,
-  cb: (call: Call) => void
+  cb: (call: Call) => void,
+  onNoLongerRinging?: (callId: string) => void
 ): Unsubscribe => {
   const q = query(
     collection(db, CALLS),
@@ -146,6 +147,12 @@ export const subscribeIncomingCalls = (
     snap.docChanges().forEach((change) => {
       if (change.type === 'added') {
         cb({ id: change.doc.id, ...change.doc.data() } as Call)
+      } else if (change.type === 'removed') {
+        // Status moved off 'ringing' — e.g. the native CallKit answer path
+        // (CallEngine on iOS) answered it directly, bypassing this JS session
+        // entirely. Without this, a stale "incoming call" screen can be left
+        // showing after the app resumes, since nothing else clears it.
+        onNoLongerRinging?.(change.doc.id)
       }
     })
   })
