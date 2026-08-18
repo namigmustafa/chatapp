@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import { useAuthStore } from '@/store/authStore'
 import { useCallStore } from '@/store/callStore'
 import { useUIStore } from '@/store/uiStore'
-import { subscribeIncomingCalls, rejectCall } from '@/services/webrtc'
+import { subscribeIncomingCalls, rejectCall, writeCalleeDebug } from '@/services/webrtc'
 
 async function ensureAndroidChannels() {
   if (Capacitor.getPlatform() !== 'android') return
@@ -144,6 +144,7 @@ export const useIncomingCalls = () => {
           if (result.pendingAnswer) {
             if (result.pendingAnswerCallId) {
               useUIStore.getState().setPendingCallKitCallId(result.pendingAnswerCallId)
+              writeCalleeDebug(result.pendingAnswerCallId, 'register:pendingAnswer(coldStart)')
             }
             setPendingCallKitAction('answer')
           }
@@ -207,7 +208,10 @@ export const useIncomingCalls = () => {
 
         // User answered from CallKit lock-screen UI
         const answerListener = await VoIPPlugin.addListener('callAnswered', ({ callId }) => {
-          if (callId) useUIStore.getState().setPendingCallKitCallId(callId)
+          if (callId) {
+            useUIStore.getState().setPendingCallKitCallId(callId)
+            writeCalleeDebug(callId, 'listener:callAnswered(warmStart)')
+          }
           setPendingCallKitAction('answer')
         })
         removers.push(() => answerListener.remove())

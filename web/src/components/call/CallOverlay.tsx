@@ -4,6 +4,7 @@ import { useCallStore } from '@/store/callStore'
 import { useAuthStore } from '@/store/authStore'
 import { useUIStore } from '@/store/uiStore'
 import { useWebRTC } from '@/hooks/useWebRTC'
+import { writeCalleeDebug } from '@/services/webrtc'
 import AliasAvatar from '@/components/ui/AliasAvatar'
 import { startRingtone } from '@/utils/notificationSound'
 import IncomingCallBanner from './IncomingCallBanner'
@@ -136,6 +137,7 @@ export default function CallOverlay() {
   // from Firestore by id so we still write the WebRTC answer and the caller connects.
   useEffect(() => {
     if (!pendingCallKitAction) return
+    if (pendingCallKitCallId) writeCalleeDebug(pendingCallKitCallId, `overlay:effectRun(action=${pendingCallKitAction},hasIncomingCall=${!!incomingCall})`)
 
     if (incomingCall) {
       if (pendingCallKitAction === 'answer') acceptCall(incomingCall)
@@ -151,13 +153,24 @@ export default function CallOverlay() {
       let cancelled = false
       ;(async () => {
         try {
+          writeCalleeDebug(pendingCallKitCallId, 'overlay:fetchingCallById')
           const { doc, getDoc } = await import('firebase/firestore')
           const { db } = await import('@/services/firebase')
           const snap = await getDoc(doc(db, 'calls', pendingCallKitCallId))
-          if (cancelled || !snap.exists()) return
+          if (cancelled) return
+          if (!snap.exists()) {
+            writeCalleeDebug(pendingCallKitCallId, 'overlay:callDocMissing')
+            return
+          }
           const call = { id: snap.id, ...snap.data() } as Call
-          if (call.offer && call.status === 'ringing') acceptCall(call)
-        } catch {}
+          if (call.offer && call.status === 'ringing') {
+            acceptCall(call)
+          } else {
+            writeCalleeDebug(pendingCallKitCallId, `overlay:callNotAcceptable(status=${call.status},hasOffer=${!!call.offer})`)
+          }
+        } catch (e) {
+          writeCalleeDebug(pendingCallKitCallId, 'overlay:fetchError:' + String((e as Error)?.message ?? e).slice(0, 80))
+        }
         if (!cancelled) {
           setPendingCallKitAction(null)
           setPendingCallKitCallId(null)
