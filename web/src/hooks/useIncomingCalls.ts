@@ -84,6 +84,33 @@ async function storeVoIPToken(userId: string, token: string) {
   } catch {}
 }
 
+// Checks native UserDefaults (via VoIPPlugin.register()) for an answer/decline
+// that happened while the WebView's JS was suspended (locked/backgrounded) and
+// never delivered the live 'callAnswered'/'callEnded' NotificationCenter event.
+// Must run on EVERY foreground transition, not just app boot — the live listener
+// can silently miss the event if the JS realm was suspended when CallKit fired it.
+async function checkPendingIOSCallAction(userId: string) {
+  if (Capacitor.getPlatform() !== 'ios') return
+  try {
+    const { VoIPPlugin } = await import('@/plugins/VoIPPlugin')
+    const result = await VoIPPlugin.register()
+
+    if (result.token) await storeVoIPToken(userId, result.token)
+
+    if (result.pendingAnswer) {
+      if (result.pendingAnswerCallId) {
+        useUIStore.getState().setPendingCallKitCallId(result.pendingAnswerCallId)
+        writeCalleeDebug(result.pendingAnswerCallId, 'register:pendingAnswer(resumeCheck)')
+      }
+      useUIStore.getState().setPendingCallKitAction('answer')
+    }
+
+    if (result.pendingDeclineCallId) {
+      rejectCall(result.pendingDeclineCallId).catch(() => {})
+    }
+  } catch {}
+}
+
 async function dismissCallKit() {
   if (Capacitor.getPlatform() !== 'ios') return
   try {
@@ -133,28 +160,7 @@ export const useIncomingCalls = () => {
     registerPushToken(user.uid)
 
     if (Capacitor.getPlatform() === 'ios') {
-      ;(async () => {
-        try {
-          const { VoIPPlugin } = await import('@/plugins/VoIPPlugin')
-          const result = await VoIPPlugin.register()
-
-          if (result.token) await storeVoIPToken(user.uid!, result.token)
-
-          // User answered a call from the CallKit UI before JS was ready
-          if (result.pendingAnswer) {
-            if (result.pendingAnswerCallId) {
-              useUIStore.getState().setPendingCallKitCallId(result.pendingAnswerCallId)
-              writeCalleeDebug(result.pendingAnswerCallId, 'register:pendingAnswer(coldStart)')
-            }
-            setPendingCallKitAction('answer')
-          }
-
-          // User declined from CallKit while JS wasn't running
-          if (result.pendingDeclineCallId) {
-            rejectCall(result.pendingDeclineCallId).catch(() => {})
-          }
-        } catch {}
-      })()
+      checkPendingIOSCallAction(user.uid)
     }
 
     if (Capacitor.getPlatform() === 'android') {
@@ -269,7 +275,11 @@ export const useIncomingCalls = () => {
     ;(async () => {
       const { App } = await import('@capacitor/app')
       const appListener = await App.addListener('appStateChange', async ({ isActive }) => {
-        if (isActive) await clearDeliveredNotifications()
+        if (!isActive) return
+        await clearDeliveredNotifications()
+        // Catches an answer/decline that CallKit delivered while the WebView's JS
+        // was suspended — the live listener can miss it, so re-check on every resume.
+        await checkPendingIOSCallAction(user.uid!)
       })
       removeAppListener = () => appListener.remove()
     })()
