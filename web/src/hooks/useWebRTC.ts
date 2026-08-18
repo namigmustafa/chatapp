@@ -43,6 +43,16 @@ export const useWebRTC = () => {
     reset()
   }, [reset])
 
+  // WebRTC negotiation calls can hang indefinitely (neither resolve nor reject) when
+  // getUserMedia succeeds but conflicts with CallKit's already-active AVAudioSession
+  // during a locked-screen answer. Without this, that leaves the callee's UI stuck
+  // forever and the caller waiting the full 30s ring timeout with no explanation.
+  const withTimeout = <T,>(p: Promise<T>, ms: number, label: string): Promise<T> =>
+    Promise.race([
+      p,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timeout:${label}`)), ms)),
+    ])
+
   const getMediaStream = async (type: CallType) => {
     return navigator.mediaDevices.getUserMedia({
       audio: true,
@@ -180,13 +190,16 @@ export const useWebRTC = () => {
           }).catch(() => {})
         }
 
-        await pc.setRemoteDescription(new RTCSessionDescription(call.offer!))
+        await withTimeout(pc.setRemoteDescription(new RTCSessionDescription(call.offer!)), 10_000, 'setRemoteDescription')
+        dbg('accept:remoteDescSet')
         flushPendingIce(pc)
 
-        const answer = await pc.createAnswer()
-        await pc.setLocalDescription(answer)
+        const answer = await withTimeout(pc.createAnswer(), 10_000, 'createAnswer')
+        dbg('accept:answerCreated')
+        await withTimeout(pc.setLocalDescription(answer), 10_000, 'setLocalDescription')
+        dbg('accept:localDescSet')
 
-        await answerCall(call.id, answer)
+        await withTimeout(answerCall(call.id, answer), 10_000, 'answerCall')
         dbg('accept:answerWritten')
         setIncomingCall(null)
         setActiveCall({ ...call, status: 'active' })

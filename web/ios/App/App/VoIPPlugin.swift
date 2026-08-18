@@ -76,6 +76,17 @@ public class VoIPPlugin: CAPPlugin, CAPBridgedPlugin {
             UserDefaults.standard.removeObject(forKey: "voip_answered_call_id")
         }
 
+        // Diagnostic timing — read-only, never cleared, so we can see how long CallKit
+        // took to hand off the answer/audio session relative to when JS starts working.
+        if UserDefaults.standard.object(forKey: "voip_answer_action_at") != nil {
+            result["nativeAnswerActionAt"] = UserDefaults.standard.double(forKey: "voip_answer_action_at")
+            result["nativeAnswerActionAppState"] = UserDefaults.standard.integer(forKey: "voip_answer_action_app_state")
+        }
+        if UserDefaults.standard.object(forKey: "voip_audio_activated_at") != nil {
+            result["nativeAudioActivatedAt"] = UserDefaults.standard.double(forKey: "voip_audio_activated_at")
+            result["nativeAudioActivatedAppState"] = UserDefaults.standard.integer(forKey: "voip_audio_activated_app_state")
+        }
+
         // Return and clear a declined call id (user declined from CallKit while JS wasn't
         // running) so JS can mark it 'rejected' in Firestore and update the caller.
         if let declinedCallId = UserDefaults.standard.string(forKey: "voip_declined_call_id"), !declinedCallId.isEmpty {

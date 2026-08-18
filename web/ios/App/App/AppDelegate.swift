@@ -139,6 +139,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         if let callId = activeCallId, !callId.isEmpty {
             UserDefaults.standard.set(callId, forKey: "voip_answered_call_id")
         }
+        // Diagnostic: timestamp + app state at the moment CallKit reports the answer,
+        // so JS can tell native-side timing apart from its own getUserMedia/WebRTC hang.
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "voip_answer_action_at")
+        UserDefaults.standard.set(UIApplication.shared.applicationState.rawValue, forKey: "voip_answer_action_app_state")
         // Do NOT configure AVAudioSession here — CallKit hasn't activated it yet.
         // Audio setup and JS notification happen in didActivate audioSession below.
         action.fulfill()
@@ -170,6 +174,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
     }
 
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
+        // Diagnostic: how long after the answer action did CallKit hand us the audio
+        // session, and what app state were we in — to correlate with the JS-side hang.
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "voip_audio_activated_at")
+        UserDefaults.standard.set(UIApplication.shared.applicationState.rawValue, forKey: "voip_audio_activated_app_state")
         // CallKit has activated the audio session — safe to configure it and start WebRTC.
         try? audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
         try? audioSession.setActive(true)

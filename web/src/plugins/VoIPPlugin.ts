@@ -17,6 +17,11 @@ export interface VoIPRegistrationResult {
   // Android: action stored by CallActivity (answer/decline from lock screen)
   pendingCallAction?: 'answer' | 'decline'
   pendingCallId?: string
+  // Diagnostic-only timing (epoch seconds) + UIApplication.State rawValue (0=active,1=inactive,2=background)
+  nativeAnswerActionAt?: number
+  nativeAnswerActionAppState?: number
+  nativeAudioActivatedAt?: number
+  nativeAudioActivatedAppState?: number
 }
 
 export interface VoIPPluginDefinition {

@@ -100,7 +100,17 @@ async function checkPendingIOSCallAction(userId: string) {
     if (result.pendingAnswer) {
       if (result.pendingAnswerCallId) {
         useUIStore.getState().setPendingCallKitCallId(result.pendingAnswerCallId)
-        writeCalleeDebug(result.pendingAnswerCallId, 'register:pendingAnswer(resumeCheck)')
+        // Correlates native CallKit timing (when it answered / activated audio, and
+        // the app state at each moment) with when JS finally got to run this check.
+        const nowSec = Date.now() / 1000
+        const parts = [`register:pendingAnswer(resumeCheck) jsNow=${nowSec.toFixed(1)}`]
+        if (result.nativeAnswerActionAt) {
+          parts.push(`answerActionAt=${result.nativeAnswerActionAt.toFixed(1)}(state=${result.nativeAnswerActionAppState}) +${(nowSec - result.nativeAnswerActionAt).toFixed(1)}s`)
+        }
+        if (result.nativeAudioActivatedAt) {
+          parts.push(`audioActivatedAt=${result.nativeAudioActivatedAt.toFixed(1)}(state=${result.nativeAudioActivatedAppState}) +${(nowSec - result.nativeAudioActivatedAt).toFixed(1)}s`)
+        }
+        writeCalleeDebug(result.pendingAnswerCallId, parts.join(' | '))
       }
       useUIStore.getState().setPendingCallKitAction('answer')
     }
