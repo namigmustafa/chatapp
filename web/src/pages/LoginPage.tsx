@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { signInWithEmail, signInWithGoogle } from '@/services/auth'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { PENDING_CONV_KEY } from '@/App'
 
 function parseAuthError(err: any): string {
   const code = err?.code ?? ''
@@ -29,7 +30,9 @@ export default function LoginPage() {
         setTimeout(() => reject(new Error('TIMEOUT')), 15000)
       )
       await Promise.race([signInWithEmail(email, password), timeout])
-      navigate('/', { replace: true })
+      const pending = sessionStorage.getItem(PENDING_CONV_KEY)
+      sessionStorage.removeItem(PENDING_CONV_KEY)
+      navigate(pending ? `/?conv=${pending}` : '/', { replace: true })
     } catch (err: any) {
       setError(parseAuthError(err))
     } finally {

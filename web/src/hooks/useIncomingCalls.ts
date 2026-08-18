@@ -47,7 +47,14 @@ async function registerPushToken(userId: string) {
 
   const { doc, setDoc } = await import('firebase/firestore')
   const { db } = await import('@/services/firebase')
-  await setDoc(doc(db, 'fcmTokens', userId), { native: token }, { merge: true })
+  // nativePlatform lets the backend tell an iOS "native" token from an Android
+  // one — without it, a fallback push (no VoIP token yet) can't know whether to
+  // send a silent Android-style data message or a visible iOS alert.
+  await setDoc(
+    doc(db, 'fcmTokens', userId),
+    { native: token, nativePlatform: Capacitor.getPlatform() },
+    { merge: true }
+  )
 }
 
 async function cancelCallNotification() {

@@ -88,6 +88,14 @@ export const missedCall = async (callId: string) => {
   await updateDoc(doc(db, CALLS, callId), { status: 'missed' })
 }
 
+// Callee's acceptCall() failed (e.g. getUserMedia rejected while answering from
+// a locked/backgrounded device) after CallKit already dismissed its UI. Without
+// this, the caller's subscribeCall listener never fires again and the caller's
+// "Ringing..." screen hangs forever with no audio.
+export const calleeError = async (callId: string) => {
+  await updateDoc(doc(db, CALLS, callId), { status: 'callee_error' })
+}
+
 export const sendIceCandidate = async (
   callId: string,
   side: 'caller' | 'callee',

@@ -136,9 +136,30 @@ export const onCallCreated = onDocumentCreated(
     const tokenData = tokenDoc.data()!
     const failed = new Set<string>()
 
-    // Android native token → data-only so AppFirebaseMessagingService shows the
-    // full-screen call UI. A notification key would bypass onMessageReceived in background.
-    if (tokenData.native && typeof tokenData.native === 'string') {
+    // `native` is shared by iOS and Android FCM tokens — nativePlatform tells us
+    // which. This path only runs when there's no VoIP token yet (e.g. it hasn't
+    // synced to Firestore); sending the Android data-only shape to an iOS device
+    // here would show NOTHING (no content-available, no full screen) and the
+    // call would be silently missed, so iOS gets a real visible alert instead.
+    if (tokenData.native && typeof tokenData.native === 'string' && tokenData.nativePlatform === 'ios') {
+      const iosResult = await messaging.send({
+        token: tokenData.native,
+        notification: { title, body },
+        data: {
+          type: 'incoming_call',
+          callId,
+          callType: call.type,
+          callerUserId: call.callerUserId,
+          callerName,
+        },
+        apns: {
+          payload: { aps: { sound: 'default' } },
+        },
+      })
+      console.log('[FCM] ios native fallback result (no VoIP token):', iosResult)
+    } else if (tokenData.native && typeof tokenData.native === 'string') {
+      // Android native token → data-only so AppFirebaseMessagingService shows the
+      // full-screen call UI. A notification key would bypass onMessageReceived in background.
       const androidResult = await messaging.send({
         token: tokenData.native,
         data: {
@@ -192,7 +213,7 @@ export const onCallUpdated = onDocumentUpdated('calls/{callId}', async (event) =
 
   const status = after.status as string
   let msgType: string | null = null
-  if (status === 'missed')   msgType = 'call_missed'
+  if (status === 'missed' || status === 'callee_error') msgType = 'call_missed'
   if (status === 'rejected') msgType = 'call_rejected'
   if (status === 'ended')    msgType = 'call_ended'
   if (!msgType) return

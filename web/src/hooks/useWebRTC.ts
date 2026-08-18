@@ -8,6 +8,7 @@ import {
   rejectCall,
   endCall,
   missedCall,
+  calleeError,
   sendIceCandidate,
   subscribeCall,
   subscribeIceCandidates,
@@ -49,6 +50,18 @@ export const useWebRTC = () => {
         ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
         : false,
     })
+  }
+
+  // Answering from CallKit/lock-screen can invoke this before the WebView is
+  // fully resumed, in which case getUserMedia rejects immediately. One retry
+  // after a short delay covers that resume race without hanging the caller.
+  const getMediaStreamWithRetry = async (type: CallType) => {
+    try {
+      return await getMediaStream(type)
+    } catch {
+      await new Promise((r) => setTimeout(r, 800))
+      return await getMediaStream(type)
+    }
   }
 
   const addIceSafe = (pc: RTCPeerConnection, ice: IceCandidate) => {
@@ -123,7 +136,7 @@ export const useWebRTC = () => {
           await pc.setRemoteDescription(new RTCSessionDescription(call.answer))
           flushPendingIce(pc)
         }
-        if (call.status === 'ended' || call.status === 'rejected' || call.status === 'missed') {
+        if (call.status === 'ended' || call.status === 'rejected' || call.status === 'missed' || call.status === 'callee_error') {
           clearTimeout(ringTimeout)
           setTimeout(() => cleanup(), 1500)
         }
@@ -147,7 +160,7 @@ export const useWebRTC = () => {
         dbg('accept:start')
         const pc = createPeerConnection()
         pcRef.current = pc
-        const stream = await getMediaStream(call.type)
+        const stream = await getMediaStreamWithRetry(call.type)
         dbg('accept:gotMedia')
         setLocalStream(stream)
         setPeerConnection(pc)
@@ -193,8 +206,11 @@ export const useWebRTC = () => {
         unsubscribeRef.current.push(unsubIce, unsubCall)
       } catch (e) {
         // Most likely getUserMedia failing (e.g. mic blocked when answered while
-        // locked). Record it so it's visible, and clean up so we don't hang.
+        // locked), even after the retry. Tell the caller via Firestore — without
+        // this write the caller's subscribeCall listener never fires again and
+        // its "Ringing..." screen hangs forever with no audio.
         dbg('accept:error:' + String((e as Error)?.message ?? e).slice(0, 80))
+        calleeError(call.id).catch(() => {})
         cleanup()
       }
     },

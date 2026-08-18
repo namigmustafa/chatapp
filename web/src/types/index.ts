@@ -58,7 +58,7 @@ export interface Message {
   transferId?: string   // links to fileTransfers/{id} for P2P transfer
 }
 
-export type CallStatus = 'ringing' | 'active' | 'ended' | 'rejected' | 'missed'
+export type CallStatus = 'ringing' | 'active' | 'ended' | 'rejected' | 'missed' | 'callee_error'
 export type CallType = 'audio' | 'video'
 
 export interface Call {

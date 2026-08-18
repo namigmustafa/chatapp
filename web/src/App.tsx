@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { onAuthChange, handleGoogleRedirect } from '@/services/auth'
 import { useAuthStore } from '@/store/authStore'
@@ -11,17 +11,34 @@ import RegisterPage from '@/pages/RegisterPage'
 import HomePage from '@/pages/HomePage'
 import SettingsPage from '@/pages/SettingsPage'
 
+// A notification tap can land here before auth has resolved (or while logged
+// out); the ?conv= target must survive the /login redirect, so we stash it
+// here and PublicRoute/LoginPage restore it once auth succeeds.
+export const PENDING_CONV_KEY = 'pendingConvId'
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore()
+  const location = useLocation()
   if (loading) return <div className="flex-1 flex items-center justify-center text-zinc-400">Loading...</div>
-  if (!user) return <Navigate to="/login" replace />
+  if (!user) {
+    const conv = new URLSearchParams(location.search).get('conv')
+    if (conv) sessionStorage.setItem(PENDING_CONV_KEY, conv)
+    return <Navigate to="/login" replace />
+  }
   return <>{children}</>
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore()
   if (loading) return <div className="flex-1 flex items-center justify-center text-zinc-400">Loading...</div>
-  if (user) return <Navigate to="/" replace />
+  if (user) {
+    const pending = sessionStorage.getItem(PENDING_CONV_KEY)
+    if (pending) {
+      sessionStorage.removeItem(PENDING_CONV_KEY)
+      return <Navigate to={`/?conv=${pending}`} replace />
+    }
+    return <Navigate to="/" replace />
+  }
   return <>{children}</>
 }
 

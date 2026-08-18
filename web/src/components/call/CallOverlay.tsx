@@ -304,6 +304,8 @@ export default function CallOverlay() {
             <p className="text-zinc-400 text-sm mt-2">
               {isActive
                 ? <span className="tabular-nums font-mono">{timer}</span>
+                : activeCall.status === 'callee_error'
+                ? <span>Couldn't connect</span>
                 : <span className="animate-pulse">Ringing...</span>
               }
             </p>
