@@ -14,6 +14,7 @@ import {
   subscribeIceCandidates,
   cleanupCall,
   writeCalleeDebug,
+  writeCallerDebug,
 } from '@/services/webrtc'
 import type { Call, CallType, IceCandidate } from '@/types'
 
@@ -108,6 +109,15 @@ export const useWebRTC = () => {
       const callerCandidatesBuffer: IceCandidate[] = []
       let resolvedCallId: string | null = null
 
+      // Diagnostic: if signaling succeeds but media never flows, this shows exactly
+      // where ICE got stuck (e.g. 'failed' usually means TURN was unreachable).
+      pc.oniceconnectionstatechange = () => {
+        if (resolvedCallId) writeCallerDebug(resolvedCallId, 'iceState:' + pc.iceConnectionState)
+      }
+      pc.onconnectionstatechange = () => {
+        if (resolvedCallId) writeCallerDebug(resolvedCallId, 'connState:' + pc.connectionState)
+      }
+
       pc.onicecandidate = ({ candidate }) => {
         if (!candidate) return
         const ice: IceCandidate = {
@@ -170,6 +180,8 @@ export const useWebRTC = () => {
         dbg('accept:start')
         const pc = createPeerConnection()
         pcRef.current = pc
+        pc.oniceconnectionstatechange = () => dbg('iceState:' + pc.iceConnectionState)
+        pc.onconnectionstatechange = () => dbg('connState:' + pc.connectionState)
         const stream = await getMediaStreamWithRetry(call.type)
         dbg('accept:gotMedia')
         setLocalStream(stream)

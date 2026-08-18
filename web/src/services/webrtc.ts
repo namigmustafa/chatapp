@@ -162,3 +162,12 @@ export const writeCalleeDebug = async (callId: string, stage: string) => {
     await updateDoc(doc(db, CALLS, callId), { calleeDebug: stage })
   } catch { /* ignore */ }
 }
+
+// Same, for the caller side (calls/{id}.callerDebug) — used to trace ICE/media
+// connection state so a media failure (e.g. TURN unreachable) is visible even
+// without a live device console.
+export const writeCallerDebug = async (callId: string, stage: string) => {
+  try {
+    await updateDoc(doc(db, CALLS, callId), { callerDebug: stage })
+  } catch { /* ignore */ }
+}
