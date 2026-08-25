@@ -4,7 +4,7 @@ import { useCallStore } from '@/store/callStore'
 import { useAuthStore } from '@/store/authStore'
 import { useUIStore } from '@/store/uiStore'
 import { useWebRTC } from '@/hooks/useWebRTC'
-import { writeCalleeDebug } from '@/services/webrtc'
+import { writeCalleeDebug, subscribeCall } from '@/services/webrtc'
 import AliasAvatar from '@/components/ui/AliasAvatar'
 import { startRingtone } from '@/utils/notificationSound'
 import IncomingCallBanner from './IncomingCallBanner'
@@ -121,6 +121,7 @@ export default function CallOverlay() {
     toggleMute,
     toggleVideo,
     setIncomingCall,
+    setActiveCall,
   } = useCallStore()
   const { user } = useAuthStore()
   const { pendingCallKitAction, setPendingCallKitAction, pendingCallKitCallId, setPendingCallKitCallId } = useUIStore()
@@ -129,6 +130,7 @@ export default function CallOverlay() {
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const remoteAudioRef = useRef<HTMLAudioElement>(null)
+  const nativeCallUnsubRef = useRef<(() => void) | null>(null)
 
   const timer = useCallTimer(activeCall?.status === 'active')
 
@@ -146,12 +148,46 @@ export default function CallOverlay() {
     // spin up a second, conflicting RTCPeerConnection over a call that's already
     // live natively — that's what caused the call timer to reset to 0 (and force a
     // real renegotiation) whenever the app was opened after answering from the lock
-    // screen. There's nothing left for JS to do for an iOS answer besides clearing
-    // the now-stale incoming-call UI.
+    // screen. We must still move the call into `activeCall` (not just clear
+    // `incomingCall`) — useIncomingCalls' cleanup effect calls dismissCallKit()
+    // (CXEndCallAction) whenever both incomingCall AND activeCall are empty, which
+    // otherwise hangs up the native call we just answered the instant this runs.
     if (pendingCallKitAction === 'answer' && Capacitor.getPlatform() === 'ios') {
+      const callIdToLoad = pendingCallKitCallId ?? incomingCall?.id ?? null
+      // Set activeCall in the SAME tick as clearing incomingCall (using the
+      // in-memory call if we have it, else a minimal placeholder) so the
+      // "no incoming, no active → dismissCallKit()" cleanup effect in
+      // useIncomingCalls never observes both as empty at once.
+      setActiveCall(
+        incomingCall
+          ? { ...incomingCall, status: 'active' }
+          : callIdToLoad
+          ? ({ id: callIdToLoad, status: 'active' } as Call)
+          : null
+      )
       setIncomingCall(null)
       setPendingCallKitAction(null)
       setPendingCallKitCallId(null)
+
+      // Keep JS in sync with the natively-driven call for the rest of its
+      // lifetime — in particular so the callee side also notices when the
+      // OTHER party hangs up (CallEngine only polls ICE candidates, not
+      // status, so nothing else will clear this locally) and tears the
+      // native CallKit session down via the activeCall→null effect above.
+      nativeCallUnsubRef.current?.()
+      nativeCallUnsubRef.current = callIdToLoad
+        ? subscribeCall(callIdToLoad, (call) => {
+            setActiveCall(call)
+            if (!call || ['ended', 'rejected', 'missed', 'callee_error'].includes(call.status)) {
+              nativeCallUnsubRef.current?.()
+              nativeCallUnsubRef.current = null
+              // Delay clearing activeCall (mirrors useWebRTC's own accept-path
+              // cleanup) so the "ended" state gets a render frame before the
+              // activeCall→null transition tears down CallKit.
+              setTimeout(() => setActiveCall(null), 1500)
+            }
+          })
+        : null
       return
     }
 
@@ -196,6 +232,10 @@ export default function CallOverlay() {
     }
     // else: wait for incomingCall to arrive (don't clear the pending action yet)
   }, [pendingCallKitAction, incomingCall, pendingCallKitCallId])
+
+  useEffect(() => {
+    return () => nativeCallUnsubRef.current?.()
+  }, [])
 
   // Ringtone while incoming call is showing (not on iOS — CallKit plays its own ringtone)
   useEffect(() => {
@@ -304,9 +344,9 @@ export default function CallOverlay() {
   const isVideo = activeCall.type === 'video'
   const isActive = activeCall.status === 'active'
   const isCaller = activeCall.callerUserId === user?.uid
-  const otherName = isCaller
+  const otherName = (isCaller
     ? (activeCall.calleeAliasId || activeCall.calleeUserId)
-    : (activeCall.callerAliasId || activeCall.callerUserId)
+    : (activeCall.callerAliasId || activeCall.callerUserId)) || 'Connecting…'
 
   // ── Active call screen ───────────────────────────────────────────────────
   return (
