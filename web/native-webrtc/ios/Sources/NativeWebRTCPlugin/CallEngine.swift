@@ -103,7 +103,7 @@ public final class CallEngine: NSObject {
                 dbg("gotToken")
 
                 let room = Room()
-                room.delegate = self
+                room.add(delegate: self)
                 self.room = room
 
                 try await room.connect(url: Self.livekitURL, token: token)
