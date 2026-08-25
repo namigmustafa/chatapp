@@ -58,15 +58,19 @@ export const useWebRTC = () => {
     return room
   }
 
-  const wireRemoteAudio = (room: Room) => {
+  const wireRemoteAudio = (room: Room, dbg: (stage: string) => void) => {
     room.on(RoomEvent.TrackSubscribed, (track) => {
+      dbg('trackSubscribed:' + track.kind)
       if (track.kind === Track.Kind.Audio) {
         setRemoteStream(new MediaStream([track.mediaStreamTrack]))
       }
     })
     room.on(RoomEvent.TrackUnsubscribed, (track) => {
+      dbg('trackUnsubscribed:' + track.kind)
       if (track.kind === Track.Kind.Audio) setRemoteStream(null)
     })
+    room.on(RoomEvent.ParticipantConnected, (p) => dbg('participantConnected:' + p.identity))
+    room.on(RoomEvent.ParticipantDisconnected, (p) => dbg('participantDisconnected:' + p.identity))
   }
 
   const startCall = useCallback(
@@ -96,7 +100,7 @@ export const useWebRTC = () => {
         dbg('caller:connecting')
         const room = await connectRoomWithRetry(callId)
         setRoom(room)
-        wireRemoteAudio(room)
+        wireRemoteAudio(room, dbg)
         dbg('caller:connected')
 
         setActiveCall({
@@ -142,7 +146,7 @@ export const useWebRTC = () => {
         dbg('accept:connecting')
         const room = await connectRoomWithRetry(call.id)
         setRoom(room)
-        wireRemoteAudio(room)
+        wireRemoteAudio(room, dbg)
         dbg('accept:connected')
 
         await answerCall(call.id)

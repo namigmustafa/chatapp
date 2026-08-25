@@ -157,6 +157,12 @@ extension CallEngine: RoomDelegate {
     public func room(_ room: Room, participant: RemoteParticipant, didSubscribeTrack publication: RemoteTrackPublication) {
         // No manual audio wiring needed — LiveKit's AudioManager plays subscribed
         // audio tracks through the engine we enabled in audioSessionDidActivate.
+        // Belt-and-suspenders: CXProvider's didActivate (which flips the engine to
+        // .default) is a separate async callback from this Task-driven answer flow
+        // with no ordering guarantee between them. If a track subscribes before
+        // didActivate has fired, re-asserting .default here costs nothing if it's
+        // already set, and rules out that race as the "no audio" cause.
+        try? AudioManager.shared.setEngineAvailability(.default)
         dbg("subscribedTrack")
     }
 

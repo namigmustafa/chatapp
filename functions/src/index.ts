@@ -134,6 +134,26 @@ export const getLiveKitToken = onRequest(
   }
 )
 
+// TEMPORARY diagnostic endpoint — remove after debugging the LiveKit
+// migration's caller-side connection issue. No auth check since this is
+// short-lived and only exposes non-sensitive debug breadcrumbs.
+export const debugRecentCalls = onRequest(async (req, res) => {
+  const snap = await db.collection('calls').orderBy('createdAt', 'desc').limit(15).get()
+  res.json(snap.docs.map((d) => {
+    const c = d.data()
+    return {
+      id: d.id,
+      status: c.status,
+      type: c.type,
+      callerUserId: c.callerUserId,
+      calleeUserId: c.calleeUserId,
+      callerDebug: c.callerDebug ?? null,
+      calleeDebug: c.calleeDebug ?? null,
+      createdAt: c.createdAt?.toDate?.() ?? c.createdAt ?? null,
+    }
+  }))
+})
+
 async function sendVoIPPush(
   voipToken: string,
   payload: Record<string, string>,

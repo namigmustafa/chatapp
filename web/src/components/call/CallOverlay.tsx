@@ -4,7 +4,7 @@ import { useCallStore } from '@/store/callStore'
 import { useAuthStore } from '@/store/authStore'
 import { useUIStore } from '@/store/uiStore'
 import { useWebRTC } from '@/hooks/useWebRTC'
-import { writeCalleeDebug, subscribeCall } from '@/services/webrtc'
+import { writeCalleeDebug, writeCallerDebug, subscribeCall } from '@/services/webrtc'
 import AliasAvatar from '@/components/ui/AliasAvatar'
 import { startRingtone } from '@/utils/notificationSound'
 import IncomingCallBanner from './IncomingCallBanner'
@@ -280,7 +280,15 @@ export default function CallOverlay() {
     }
     if (remoteAudioRef.current && remoteStream) {
       remoteAudioRef.current.srcObject = remoteStream
-      remoteAudioRef.current.play().catch(() => {})
+      remoteAudioRef.current.play().catch((e) => {
+        // A silently-swallowed rejection here (e.g. browser autoplay policy)
+        // looks identical to "connected but no audio" from the user's side —
+        // surface it so it's visible in the call doc instead of vanishing.
+        if (activeCall) {
+          const dbg = activeCall.callerUserId === user?.uid ? writeCallerDebug : writeCalleeDebug
+          void dbg(activeCall.id, 'audioPlayError:' + String(e?.message ?? e).slice(0, 100))
+        }
+      })
     }
   }, [remoteStream, activeCall])
 
