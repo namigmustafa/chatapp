@@ -100,11 +100,13 @@ class CallForegroundService : Service() {
         return if (token.isNullOrEmpty()) null else token
     }
 
+    // Separate field from the JS-side calleeDebug — otherwise CallOverlay's
+    // own writes overwrite whatever native last wrote here.
     private fun dbg(stage: String) {
         val id = callId ?: return
         val token = idToken() ?: return
         scope.launch {
-            try { FirestoreClient.updateDocument("calls/$id", mapOf("calleeDebug" to "native:$stage"), token) } catch (_: Exception) {}
+            try { FirestoreClient.updateDocument("calls/$id", mapOf("calleeDebugNative" to "native:$stage"), token) } catch (_: Exception) {}
         }
     }
 

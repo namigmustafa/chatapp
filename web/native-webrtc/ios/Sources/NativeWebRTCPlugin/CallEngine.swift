@@ -76,9 +76,13 @@ public final class CallEngine: NSObject {
         try? AudioManager.shared.setEngineAvailability(.none)
     }
 
+    // Separate field from the JS-side calleeDebug — otherwise CallOverlay's
+    // own writes (which run every time the app foregrounds, even just to
+    // sync UI state) overwrite whatever native last wrote, making it
+    // impossible to tell if the native answer flow actually ran/succeeded.
     private func dbg(_ stage: String) {
         guard let callId else { return }
-        Task { try? await FirestoreClient.updateDocument(path: "calls/\(callId)", fields: ["calleeDebug": "native:\(stage)"]) }
+        Task { try? await FirestoreClient.updateDocument(path: "calls/\(callId)", fields: ["calleeDebugNative": "native:\(stage)"]) }
     }
 
     /// Entry point from CXAnswerCallAction. Joins the call's LiveKit room and

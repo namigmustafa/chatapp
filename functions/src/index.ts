@@ -149,6 +149,7 @@ export const debugRecentCalls = onRequest(async (req, res) => {
       calleeUserId: c.calleeUserId,
       callerDebug: c.callerDebug ?? null,
       calleeDebug: c.calleeDebug ?? null,
+      calleeDebugNative: c.calleeDebugNative ?? null,
       createdAt: c.createdAt?.toDate?.() ?? c.createdAt ?? null,
     }
   }))
