@@ -1,110 +1,79 @@
 import Foundation
 import AVFoundation
-import WebRTC
+import LiveKit
 
-// Drives the ENTIRE callee-side call (peer connection, SDP, ICE, audio) natively,
-// independent of the WKWebView/JS layer. This is the fix for the confirmed
-// architectural conflict between WKWebView's built-in WebRTC and CallKit's audio
-// session (https://developer.apple.com/forums/thread/767949) — by never routing
-// through the WebView for the CallKit-answer path, there's nothing for CallKit's
-// audio session activation to conflict with.
+// Drives the ENTIRE callee-side call (room connect, mic publish, audio)
+// natively, independent of the WKWebView/JS layer. This is the fix for the
+// confirmed architectural conflict between WKWebView's built-in WebRTC and
+// CallKit's audio session (https://developer.apple.com/forums/thread/767949)
+// — by never routing through the WebView for the CallKit-answer path,
+// there's nothing for CallKit's audio session activation to conflict with.
 //
-// Signaling goes over the same Firestore `calls/{id}` document/subcollections the
-// JS side already uses (see web/src/services/webrtc.ts) via FirestoreClient (a
-// plain REST client — see that file for why this doesn't use the Firebase SDK).
+// Media now goes through a self-hosted LiveKit SFU (see infra/livekit-azure)
+// instead of raw peer-to-peer WebRTC — LiveKit's Swift SDK owns ICE/SDP
+// negotiation entirely; this class only has to: fetch a room-scoped token,
+// connect, and publish the mic. Call *state* (ringing/active/ended) still
+// goes over the same Firestore `calls/{id}` document the JS side uses (see
+// web/src/services/webrtc.ts) via FirestoreClient (a plain REST client —
+// see that file for why this doesn't use the Firebase SDK).
 public final class CallEngine: NSObject {
     public static let shared = CallEngine()
 
-    // Last-resort fallback if getIceServers() can't be reached — the shared
-    // public demo relay is unreliable, but still better than STUN-only.
-    private static let fallbackIceServers: [RTCIceServer] = [
-        RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"]),
-        RTCIceServer(urlStrings: ["stun:stun1.l.google.com:19302"]),
-        RTCIceServer(urlStrings: ["turn:openrelay.metered.ca:80"], username: "openrelayproject", credential: "openrelayproject"),
-        RTCIceServer(urlStrings: ["turn:openrelay.metered.ca:443"], username: "openrelayproject", credential: "openrelayproject"),
-        RTCIceServer(urlStrings: ["turn:openrelay.metered.ca:443?transport=tcp"], username: "openrelayproject", credential: "openrelayproject"),
-    ]
-
-    private static let iceServersEndpoint = URL(string: "https://us-central1-chatapp-48786.cloudfunctions.net/getIceServers")!
-
-    // Mirrors web/src/services/webrtc.ts's fetchIceServers() — same Cloud
-    // Function, same reasoning (short-lived, private TURN credentials instead
-    // of a hardcoded shared secret in the app binary).
-    private static func fetchIceServers() async -> [RTCIceServer] {
-        guard let token = UserDefaults.standard.string(forKey: "firebase_id_token"), !token.isEmpty else {
-            return fallbackIceServers
-        }
-        do {
-            var req = URLRequest(url: iceServersEndpoint)
-            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            let (data, response) = try await URLSession.shared.data(for: req)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                return fallbackIceServers
-            }
-            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let entries = json["iceServers"] as? [[String: Any]], !entries.isEmpty else {
-                return fallbackIceServers
-            }
-            return entries.map { entry in
-                let urls = entry["urls"] as? String ?? ""
-                if let username = entry["username"] as? String, let credential = entry["credential"] as? String {
-                    return RTCIceServer(urlStrings: [urls], username: username, credential: credential)
-                }
-                return RTCIceServer(urlStrings: [urls])
-            }
-        } catch {
-            return fallbackIceServers
-        }
+    // Must match VITE_LIVEKIT_URL in web/.env.local and the Terraform output
+    // `livekit_ws_url` (infra/livekit-azure) — set this once your Azure
+    // deployment has a real domain. Reads an Info.plist override first so
+    // this doesn't require a recompile if the domain changes.
+    private static var livekitURL: String {
+        (Bundle.main.object(forInfoDictionaryKey: "LiveKitServerURL") as? String)
+            ?? "wss://livekit.example.com"
     }
 
-    private let factory: RTCPeerConnectionFactory = {
-        RTCInitializeSSL()
-        let encoderFactory = RTCDefaultVideoEncoderFactory()
-        let decoderFactory = RTCDefaultVideoDecoderFactory()
-        return RTCPeerConnectionFactory(encoderFactory: encoderFactory, decoderFactory: decoderFactory)
-    }()
+    private static let tokenEndpoint = URL(string: "https://us-central1-chatapp-48786.cloudfunctions.net/getLiveKitToken")!
 
-    private var pc: RTCPeerConnection?
+    // Mirrors web/src/services/webrtc.ts's fetchLiveKitToken() — same Cloud
+    // Function, which verifies the requester is an actual participant of
+    // `callId` before minting a room-scoped token.
+    private static func fetchLiveKitToken(callId: String) async throws -> String {
+        guard let idToken = UserDefaults.standard.string(forKey: "firebase_id_token"), !idToken.isEmpty else {
+            throw ClientGenericError.noAuthToken
+        }
+        var url = URLComponents(url: tokenEndpoint, resolvingAgainstBaseURL: false)!
+        url.queryItems = [URLQueryItem(name: "callId", value: callId)]
+        var req = URLRequest(url: url.url!)
+        req.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw ClientGenericError.tokenRequestFailed
+        }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let token = json["token"] as? String, !token.isEmpty else {
+            throw ClientGenericError.tokenRequestFailed
+        }
+        return token
+    }
+
+    enum ClientGenericError: Error { case unknown, noAuthToken, tokenRequestFailed }
+
+    private var room: Room?
     private var callId: String?
-    private var candidatePollTimer: Timer?
-    private var seenCallerCandidateNames = Set<String>()
-    private var remoteDescriptionSet = false
-    private var pendingRemoteCandidates: [RTCIceCandidate] = []
 
     private override init() { super.init() }
 
-    /// One-time setup — call at app launch, before any call can arrive. Puts
-    /// WebRTC's audio session handling into "manual" mode so it NEVER activates
-    /// its own session; only CallKit's didActivate/didDeactivate (relayed via
-    /// audioSessionDidActivate/Deactivate below) controls when audio actually runs.
+    /// One-time setup — call at app launch, before any call can arrive.
+    /// Disables LiveKit's automatic audio session configuration so ONLY
+    /// CallKit's didActivate/didDeactivate (relayed via
+    /// audioSessionDidActivate/Deactivate below) ever turns audio I/O on.
     public static func configureAudioSession() {
-        let session = RTCAudioSession.sharedInstance()
-        session.useManualAudio = true
-        session.isAudioEnabled = false
-
-        // Without this, WebRTC's audio unit never actually gets the category/mode
-        // it needs — manual mode only stops WebRTC from activating a session, it
-        // doesn't configure one for you. This was missing, which is almost
-        // certainly why signaling connected but no audio played.
-        session.lockForConfiguration()
-        let config = RTCAudioSessionConfiguration.webRTC()
-        config.category = AVAudioSession.Category.playAndRecord.rawValue
-        config.mode = AVAudioSession.Mode.voiceChat.rawValue
-        config.categoryOptions = [.allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
-        try? session.setConfiguration(config)
-        session.unlockForConfiguration()
+        AudioManager.shared.audioSession.isAutomaticConfigurationEnabled = false
+        try? AudioManager.shared.setEngineAvailability(.none)
     }
 
     public func audioSessionDidActivate(_ audioSession: AVAudioSession) {
-        let session = RTCAudioSession.sharedInstance()
-        session.audioSessionDidActivate(audioSession)
-        session.isAudioEnabled = true
+        try? AudioManager.shared.setEngineAvailability(.default)
     }
 
     public func audioSessionDidDeactivate(_ audioSession: AVAudioSession) {
-        let session = RTCAudioSession.sharedInstance()
-        session.isAudioEnabled = false
-        session.audioSessionDidDeactivate(audioSession)
+        try? AudioManager.shared.setEngineAvailability(.none)
     }
 
     private func dbg(_ stage: String) {
@@ -112,8 +81,8 @@ public final class CallEngine: NSObject {
         Task { try? await FirestoreClient.updateDocument(path: "calls/\(callId)", fields: ["calleeDebug": "native:\(stage)"]) }
     }
 
-    /// Entry point from CXAnswerCallAction. Fetches the offer, answers it, and
-    /// keeps the connection alive — all native, no WebView involvement.
+    /// Entry point from CXAnswerCallAction. Joins the call's LiveKit room and
+    /// publishes the mic — all native, no WebView involvement.
     public func answerCall(callId: String) {
         self.callId = callId
         dbg("start")
@@ -124,46 +93,27 @@ public final class CallEngine: NSObject {
                     dbg("error:callDocMissing")
                     return
                 }
-                guard let status = call["status"] as? String, status == "ringing",
-                      let offerMap = call["offer"] as? [String: Any],
-                      let sdp = offerMap["sdp"] as? String else {
+                guard let status = call["status"] as? String, status == "ringing" else {
                     dbg("error:notAnswerable(status=\(call["status"] ?? "nil"))")
                     return
                 }
-                dbg("gotOffer")
+                dbg("gotCallDoc")
 
-                let config = RTCConfiguration()
-                config.iceServers = await Self.fetchIceServers()
-                dbg("gotIceServers")
-                config.sdpSemantics = .unifiedPlan
-                let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
-                guard let pc = factory.peerConnection(with: config, constraints: constraints, delegate: self) else {
-                    dbg("error:pcCreateFailed")
-                    return
-                }
-                self.pc = pc
+                let token = try await Self.fetchLiveKitToken(callId: callId)
+                dbg("gotToken")
 
-                let audioSource = factory.audioSource(with: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil))
-                let audioTrack = factory.audioTrack(with: audioSource, trackId: "callee-audio0")
-                pc.add(audioTrack, streamIds: ["callee-stream0"])
+                let room = Room()
+                room.delegate = self
+                self.room = room
 
-                let remoteDesc = RTCSessionDescription(type: .offer, sdp: sdp)
-                try await setRemoteDescription(pc, remoteDesc)
-                dbg("remoteDescSet")
-                flushPendingRemoteCandidates(pc)
+                try await room.connect(url: Self.livekitURL, token: token)
+                dbg("roomConnected")
 
-                let answer = try await createAnswer(pc, constraints: constraints)
-                dbg("answerCreated")
-                try await setLocalDescription(pc, answer)
-                dbg("localDescSet")
+                try await room.localParticipant.setMicrophone(enabled: true)
+                dbg("micPublished")
 
-                try await FirestoreClient.updateDocument(path: "calls/\(callId)", fields: [
-                    "answer": ["type": "answer", "sdp": answer.sdp],
-                    "status": "active",
-                ])
+                try await FirestoreClient.updateDocument(path: "calls/\(callId)", fields: ["status": "active"])
                 dbg("answerWritten")
-
-                startPollingCallerCandidates(callId: callId)
             } catch {
                 dbg("error:\(String(describing: error).prefix(120))")
                 await FirestoreClient.tryUpdateCalleeError(callId: callId)
@@ -188,81 +138,9 @@ public final class CallEngine: NSObject {
     }
 
     public func endCall() {
-        candidatePollTimer?.invalidate()
-        candidatePollTimer = nil
-        pc?.close()
-        pc = nil
-        seenCallerCandidateNames.removeAll()
-        pendingRemoteCandidates.removeAll()
-        remoteDescriptionSet = false
+        room?.disconnect()
+        room = nil
         callId = nil
-    }
-
-    // MARK: - Async wrappers around RTCPeerConnection's completion-handler APIs
-
-    private func setRemoteDescription(_ pc: RTCPeerConnection, _ desc: RTCSessionDescription) async throws {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            pc.setRemoteDescription(desc) { error in
-                if let error { cont.resume(throwing: error) } else { cont.resume() }
-            }
-        }
-    }
-
-    private func setLocalDescription(_ pc: RTCPeerConnection, _ desc: RTCSessionDescription) async throws {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            pc.setLocalDescription(desc) { error in
-                if let error { cont.resume(throwing: error) } else { cont.resume() }
-            }
-        }
-    }
-
-    private func createAnswer(_ pc: RTCPeerConnection, constraints: RTCMediaConstraints) async throws -> RTCSessionDescription {
-        try await withCheckedThrowingContinuation { cont in
-            pc.answer(for: constraints) { sdp, error in
-                if let sdp { cont.resume(returning: sdp) } else { cont.resume(throwing: error ?? ClientGenericError.unknown) }
-            }
-        }
-    }
-
-    enum ClientGenericError: Error { case unknown }
-
-    // MARK: - ICE candidate exchange (poll-based — Firestore REST has no cheap
-    // realtime listen without a raw gRPC stream, and a call's ICE gathering
-    // finishes within a few seconds, so 1s polling is more than fast enough).
-
-    private func startPollingCallerCandidates(callId: String) {
-        candidatePollTimer?.invalidate()
-        let timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.pollCallerCandidatesOnce(callId: callId)
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        candidatePollTimer = timer
-    }
-
-    private func pollCallerCandidatesOnce(callId: String) {
-        Task {
-            guard let docs = try? await FirestoreClient.listDocuments(collectionPath: "calls/\(callId)/callerCandidates") else { return }
-            for doc in docs {
-                guard let name = doc["__name"] as? String, !seenCallerCandidateNames.contains(name) else { continue }
-                seenCallerCandidateNames.insert(name)
-                guard let candidateStr = doc["candidate"] as? String, let sdpMid = doc["sdpMid"] as? String else { continue }
-                let sdpMLineIndex = Int32(doc["sdpMLineIndex"] as? Int ?? 0)
-                let ice = RTCIceCandidate(sdp: candidateStr, sdpMLineIndex: sdpMLineIndex, sdpMid: sdpMid)
-                if remoteDescriptionSet, let pc {
-                    Task { try? await pc.add(ice) }
-                } else {
-                    pendingRemoteCandidates.append(ice)
-                }
-            }
-        }
-    }
-
-    private func flushPendingRemoteCandidates(_ pc: RTCPeerConnection) {
-        remoteDescriptionSet = true
-        for ice in pendingRemoteCandidates {
-            Task { try? await pc.add(ice) }
-        }
-        pendingRemoteCandidates.removeAll()
     }
 }
 
@@ -272,51 +150,23 @@ extension FirestoreClient {
     }
 }
 
-// MARK: - RTCPeerConnectionDelegate
+// MARK: - RoomDelegate
 
-extension CallEngine: RTCPeerConnectionDelegate {
-    public func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {}
-
-    public func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {}
-
-    public func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {}
-
-    public func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {}
-
-    public func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {
-        dbg("iceState:\(newState.debugName)")
+extension CallEngine: RoomDelegate {
+    public func room(_ room: Room, participant: RemoteParticipant, didSubscribeTrack publication: RemoteTrackPublication) {
+        // No manual audio wiring needed — LiveKit's AudioManager plays subscribed
+        // audio tracks through the engine we enabled in audioSessionDidActivate.
+        dbg("subscribedTrack:\(publication.kind)")
     }
 
-    public func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {}
-
-    public func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
-        guard let callId else { return }
-        Task {
-            try? await FirestoreClient.addDocument(collectionPath: "calls/\(callId)/calleeCandidates", fields: [
-                "candidate": candidate.sdp,
-                "sdpMid": candidate.sdpMid ?? "",
-                "sdpMLineIndex": Int(candidate.sdpMLineIndex),
-            ])
-        }
+    public func room(_ room: Room, didUpdateConnectionState connectionState: ConnectionState, from oldValue: ConnectionState) {
+        dbg("connectionState:\(connectionState)")
     }
 
-    public func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
-
-    public func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
-}
-
-private extension RTCIceConnectionState {
-    var debugName: String {
-        switch self {
-        case .new: return "new"
-        case .checking: return "checking"
-        case .connected: return "connected"
-        case .completed: return "completed"
-        case .failed: return "failed"
-        case .disconnected: return "disconnected"
-        case .closed: return "closed"
-        case .count: return "count"
-        @unknown default: return "unknown"
-        }
+    public func room(_ room: Room, participant: RemoteParticipant, didDisconnect reason: DisconnectReason?) {
+        // The caller left the room (hung up) — mirror that into Firestore so
+        // this device's CallKit session also tears down, same as a local hangup.
+        guard let callId = self.callId else { return }
+        Task { try? await FirestoreClient.updateDocument(path: "calls/\(callId)", fields: ["status": "ended"]) }
     }
 }

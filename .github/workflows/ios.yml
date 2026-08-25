@@ -33,6 +33,10 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          # Set once the LiveKit server is provisioned (see infra/livekit-azure) —
+          # e.g. wss://livekit.yourdomain.com. Empty until then is fine; calls just
+          # won't connect (same as running without this secret set today).
+          VITE_LIVEKIT_URL: ${{ secrets.VITE_LIVEKIT_URL }}
         run: npm run build
 
       - name: Capacitor sync iOS
