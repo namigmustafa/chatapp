@@ -157,14 +157,14 @@ extension CallEngine: RoomDelegate {
     public func room(_ room: Room, participant: RemoteParticipant, didSubscribeTrack publication: RemoteTrackPublication) {
         // No manual audio wiring needed — LiveKit's AudioManager plays subscribed
         // audio tracks through the engine we enabled in audioSessionDidActivate.
-        dbg("subscribedTrack:\(publication.kind)")
+        dbg("subscribedTrack")
     }
 
     public func room(_ room: Room, didUpdateConnectionState connectionState: ConnectionState, from oldValue: ConnectionState) {
         dbg("connectionState:\(connectionState)")
     }
 
-    public func room(_ room: Room, participant: RemoteParticipant, didDisconnect reason: DisconnectReason?) {
+    public func room(_ room: Room, participantDidDisconnect participant: RemoteParticipant) {
         // The caller left the room (hung up) — mirror that into Firestore so
         // this device's CallKit session also tears down, same as a local hangup.
         guard let callId = self.callId else { return }
