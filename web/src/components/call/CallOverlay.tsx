@@ -120,6 +120,7 @@ export default function CallOverlay() {
     isVideoOff,
     toggleMute,
     toggleVideo,
+    setIncomingCall,
   } = useCallStore()
   const { user } = useAuthStore()
   const { pendingCallKitAction, setPendingCallKitAction, pendingCallKitCallId, setPendingCallKitCallId } = useUIStore()
@@ -138,6 +139,21 @@ export default function CallOverlay() {
   useEffect(() => {
     if (!pendingCallKitAction) return
     if (pendingCallKitCallId) writeCalleeDebug(pendingCallKitCallId, `overlay:effectRun(action=${pendingCallKitAction},hasIncomingCall=${!!incomingCall})`)
+
+    // iOS: CXAnswerCallAction always answers the call natively via CallEngine
+    // (AppDelegate.swift's CXAnswerCallAction handler runs on every answer, whether
+    // the app is locked or already foregrounded). Re-running acceptCall() here would
+    // spin up a second, conflicting RTCPeerConnection over a call that's already
+    // live natively — that's what caused the call timer to reset to 0 (and force a
+    // real renegotiation) whenever the app was opened after answering from the lock
+    // screen. There's nothing left for JS to do for an iOS answer besides clearing
+    // the now-stale incoming-call UI.
+    if (pendingCallKitAction === 'answer' && Capacitor.getPlatform() === 'ios') {
+      setIncomingCall(null)
+      setPendingCallKitAction(null)
+      setPendingCallKitCallId(null)
+      return
+    }
 
     if (incomingCall) {
       if (pendingCallKitAction === 'answer') acceptCall(incomingCall)

@@ -53,6 +53,8 @@
 	<string>Sesli ve video aramalar için mikrofonunuza erişmemiz gerekiyor.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Fotoğraf ve video paylaşmak için fotoğraf kitaplığınıza erişmemiz gerekiyor.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Sesli ve video aramalarda yerel ağdaki cihazlarla bağlantı kurmak için ağ erişimine ihtiyacımız var.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UIBackgroundModes</key>
