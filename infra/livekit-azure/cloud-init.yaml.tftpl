@@ -26,7 +26,9 @@ write_files:
     permissions: '0644'
     content: |
       ${livekit_domain} {
-        reverse_proxy livekit:7880
+        # livekit runs with network_mode: host (required for its UDP RTC port
+        # range), so it has no Docker-DNS hostname — reach it via localhost.
+        reverse_proxy 127.0.0.1:7880
         tls ${acme_email}
       }
 
