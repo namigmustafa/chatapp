@@ -38,3 +38,4 @@ infra/**/*.tfstate
 infra/**/*.tfstate.*
 infra/**/terraform.tfvars
 infra/**/*.tfplan
+infra/**/tfplan.out

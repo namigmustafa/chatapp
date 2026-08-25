@@ -1,11 +1,15 @@
 output "livekit_public_ip" {
   value       = azurerm_public_ip.this.ip_address
-  description = "Point your DNS A record (var.livekit_domain) at this IP before applying, or Caddy's ACME challenge will fail on first boot."
+  description = "The VM's public IP. livekit_domain below is derived from this via sslip.io — no manual DNS record needed."
+}
+
+output "livekit_domain" {
+  value = local.livekit_domain
 }
 
 output "livekit_ws_url" {
-  value       = "wss://${var.livekit_domain}"
-  description = "Use this as the LiveKit server URL in the web/iOS/Android clients."
+  value       = "wss://${local.livekit_domain}"
+  description = "Use this as VITE_LIVEKIT_URL / LiveKitServerURL (Info.plist) / LIVEKIT_URL (CallForegroundService.kt) in the clients."
 }
 
 output "key_vault_name" {

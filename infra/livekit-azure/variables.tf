@@ -30,11 +30,6 @@ variable "admin_ip_cidr" {
   type        = string
 }
 
-variable "livekit_domain" {
-  description = "Public DNS name that will point (A record) at this VM's public IP, e.g. livekit.yourdomain.com. Required for Caddy to issue a Let's Encrypt cert — signaling must be wss:// for iOS/Android clients."
-  type        = string
-}
-
 variable "acme_email" {
   description = "Email used for Let's Encrypt certificate registration/expiry notices."
   type        = string

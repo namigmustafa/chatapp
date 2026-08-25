@@ -50,6 +50,15 @@ resource "azurerm_public_ip" "this" {
   tags                = var.tags
 }
 
+# POC/test setup: derive the LiveKit domain from sslip.io instead of requiring
+# a real registered domain + manual DNS record. <ip-with-dashes>.sslip.io
+# resolves to that literal IP, which is enough for Caddy to issue a Let's
+# Encrypt cert against — Terraform sequences public IP creation before the VM
+# automatically since custom_data depends on this value transitively.
+locals {
+  livekit_domain = "${replace(azurerm_public_ip.this.ip_address, ".", "-")}.sslip.io"
+}
+
 # Least-privilege NSG: SSH is locked to admin_ip_cidr only. 80/443 and the RTC
 # media range must stay open to the whole internet — that's inherent to a
 # public signaling+media server, not a scoping mistake.
@@ -218,7 +227,7 @@ resource "azurerm_linux_virtual_machine" "this" {
   }
 
   custom_data = base64encode(templatefile("${path.module}/cloud-init.yaml.tftpl", {
-    livekit_domain     = var.livekit_domain
+    livekit_domain     = local.livekit_domain
     acme_email         = var.acme_email
     livekit_api_key    = random_pet.livekit_api_key.id
     livekit_api_secret = random_password.livekit_api_secret.result

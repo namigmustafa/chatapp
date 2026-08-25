@@ -45,7 +45,7 @@ class CallForegroundService : Service() {
 
         // Must match VITE_LIVEKIT_URL / the Terraform output `livekit_ws_url`
         // (infra/livekit-azure) — update once Azure is provisioned.
-        private const val LIVEKIT_URL = "wss://livekit.example.com"
+        private const val LIVEKIT_URL = "wss://20-16-170-193.sslip.io"
         private const val TOKEN_ENDPOINT = "https://us-central1-chatapp-48786.cloudfunctions.net/getLiveKitToken"
     }
 
