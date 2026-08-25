@@ -4,7 +4,6 @@ import {
   updateDoc,
   onSnapshot,
   collection,
-  addDoc,
   deleteDoc,
   serverTimestamp,
   query,
@@ -12,53 +11,25 @@ import {
 } from 'firebase/firestore'
 import type { Unsubscribe } from 'firebase/firestore'
 import { auth, db } from './firebase'
-import type { Call, CallType, IceCandidate } from '@/types'
+import type { Call, CallType } from '@/types'
 
 const CALLS = 'calls'
 
-// Last-resort fallback if getIceServers() can't be reached (offline function,
-// cold-start timeout, etc.) — better than no TURN at all, even though the
-// shared public demo relay is unreliable. The real path fetches a private,
-// short-lived credential per call from our own Cloud Function.
-const FALLBACK_ICE_SERVERS: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  {
-    urls: 'turn:openrelay.metered.ca:80',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-]
+const LIVEKIT_TOKEN_ENDPOINT = 'https://us-central1-chatapp-48786.cloudfunctions.net/getLiveKitToken'
 
-const ICE_SERVERS_ENDPOINT = 'https://us-central1-chatapp-48786.cloudfunctions.net/getIceServers'
-
-export const fetchIceServers = async (): Promise<RTCIceServer[]> => {
-  try {
-    const token = await auth.currentUser?.getIdToken()
-    if (!token) return FALLBACK_ICE_SERVERS
-    const resp = await fetch(ICE_SERVERS_ENDPOINT, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!resp.ok) return FALLBACK_ICE_SERVERS
-    const data = (await resp.json()) as { iceServers?: RTCIceServer[] }
-    return data.iceServers?.length ? data.iceServers : FALLBACK_ICE_SERVERS
-  } catch {
-    return FALLBACK_ICE_SERVERS
-  }
-}
-
-export const createPeerConnection = (iceServers: RTCIceServer[]) => {
-  return new RTCPeerConnection({ iceServers })
+// Room-scoped JWT — the room name is always the callId, and the Cloud
+// Function verifies the requester is a participant of that specific call
+// before minting anything (see functions/src/index.ts getLiveKitToken).
+export const fetchLiveKitToken = async (callId: string): Promise<string> => {
+  const token = await auth.currentUser?.getIdToken()
+  if (!token) throw new Error('not authenticated')
+  const resp = await fetch(`${LIVEKIT_TOKEN_ENDPOINT}?callId=${encodeURIComponent(callId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!resp.ok) throw new Error(`getLiveKitToken failed: ${resp.status}`)
+  const data = (await resp.json()) as { token?: string }
+  if (!data.token) throw new Error('getLiveKitToken: empty token')
+  return data.token
 }
 
 export const initiateCall = async (
@@ -67,7 +38,6 @@ export const initiateCall = async (
   calleeAliasId: string,
   calleeUserId: string,
   type: CallType,
-  offer: RTCSessionDescriptionInit,
   conversationId: string
 ): Promise<string> => {
   const callId = `${callerUserId}_${calleeUserId}_${Date.now()}`
@@ -79,21 +49,15 @@ export const initiateCall = async (
     type,
     conversationId,
     status: 'ringing',
-    offer,
-    answer: null,
     createdAt: serverTimestamp(),
   })
   return callId
 }
 
-export const answerCall = async (
-  callId: string,
-  answer: RTCSessionDescriptionInit
-) => {
-  await updateDoc(doc(db, CALLS, callId), {
-    answer,
-    status: 'active',
-  })
+// Callee has joined the LiveKit room — flip the call to 'active' so the
+// caller's subscribeCall listener clears its ring timeout.
+export const answerCall = async (callId: string) => {
+  await updateDoc(doc(db, CALLS, callId), { status: 'active' })
 }
 
 export const rejectCall = async (callId: string) => {
@@ -108,23 +72,12 @@ export const missedCall = async (callId: string) => {
   await updateDoc(doc(db, CALLS, callId), { status: 'missed' })
 }
 
-// Callee's acceptCall() failed (e.g. getUserMedia rejected while answering from
-// a locked/backgrounded device) after CallKit already dismissed its UI. Without
-// this, the caller's subscribeCall listener never fires again and the caller's
-// "Ringing..." screen hangs forever with no audio.
+// Callee's acceptCall() failed (e.g. mic permission or LiveKit connect failed
+// while answering from a locked/backgrounded device) after CallKit already
+// dismissed its UI. Without this, the caller's subscribeCall listener never
+// fires again and the caller's "Ringing..." screen hangs forever with no audio.
 export const calleeError = async (callId: string) => {
   await updateDoc(doc(db, CALLS, callId), { status: 'callee_error' })
-}
-
-export const sendIceCandidate = async (
-  callId: string,
-  side: 'caller' | 'callee',
-  candidate: IceCandidate
-) => {
-  await addDoc(
-    collection(db, CALLS, callId, `${side}Candidates`),
-    candidate
-  )
 }
 
 export const subscribeCall = (
@@ -134,23 +87,6 @@ export const subscribeCall = (
   return onSnapshot(doc(db, CALLS, callId), (snap) => {
     cb(snap.exists() ? ({ id: snap.id, ...snap.data() } as Call) : null)
   })
-}
-
-export const subscribeIceCandidates = (
-  callId: string,
-  side: 'caller' | 'callee',
-  cb: (candidate: IceCandidate) => void
-): Unsubscribe => {
-  return onSnapshot(
-    collection(db, CALLS, callId, `${side}Candidates`),
-    (snap) => {
-      snap.docChanges().forEach((change) => {
-        if (change.type === 'added') {
-          cb(change.doc.data() as IceCandidate)
-        }
-      })
-    }
-  )
 }
 
 export const subscribeIncomingCalls = (
@@ -190,9 +126,8 @@ export const writeCalleeDebug = async (callId: string, stage: string) => {
   } catch { /* ignore */ }
 }
 
-// Same, for the caller side (calls/{id}.callerDebug) — used to trace ICE/media
-// connection state so a media failure (e.g. TURN unreachable) is visible even
-// without a live device console.
+// Same, for the caller side (calls/{id}.callerDebug) — used to trace LiveKit
+// connection state so a media failure is visible even without a live device console.
 export const writeCallerDebug = async (callId: string, stage: string) => {
   try {
     await updateDoc(doc(db, CALLS, callId), { callerDebug: stage })

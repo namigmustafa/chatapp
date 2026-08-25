@@ -190,9 +190,9 @@ export default function ChatWindow({
                 </svg>
               </button>
               <button
-                onClick={() => canCall && startCall(myAliasId, otherAliasId, otherUserId, 'video', conversationId)}
-                title={canCall ? 'Video call' : 'Alias is currently unreachable'}
-                disabled={!canCall}
+                onClick={() => {}}
+                title="Video calls are temporarily disabled during the LiveKit migration (audio-only for now)"
+                disabled
                 className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

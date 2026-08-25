@@ -69,8 +69,10 @@ export interface Call {
   calleeUserId: string
   type: CallType
   status: CallStatus
-  offer: RTCSessionDescriptionInit | null
-  answer: RTCSessionDescriptionInit | null
+  // Pre-LiveKit-migration calls carried the SDP offer/answer directly on the
+  // doc; kept optional so old (already-ended) docs still satisfy this type.
+  offer?: RTCSessionDescriptionInit | null
+  answer?: RTCSessionDescriptionInit | null
   createdAt: number
 }
 
