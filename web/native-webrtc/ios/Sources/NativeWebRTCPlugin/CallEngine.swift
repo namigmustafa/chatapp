@@ -138,7 +138,8 @@ public final class CallEngine: NSObject {
     }
 
     public func endCall() {
-        room?.disconnect()
+        let roomToClose = room
+        Task { await roomToClose?.disconnect() }
         room = nil
         callId = nil
     }
