@@ -82,11 +82,20 @@ async function clearDeliveredNotifications() {
 // Must be refreshed on every resume — ID tokens expire after ~1h and a call
 // could arrive after the app's been backgrounded far longer than that.
 async function syncAuthTokenToNative(user: User) {
-  if (Capacitor.getPlatform() !== 'ios') return
+  const platform = Capacitor.getPlatform()
+  if (platform !== 'ios' && platform !== 'android') return
   try {
     const token = await user.getIdToken()
-    const { NativeWebRTCPlugin } = await import('@/plugins/NativeWebRTCPlugin')
-    await NativeWebRTCPlugin.setAuthToken({ token })
+    if (platform === 'ios') {
+      const { NativeWebRTCPlugin } = await import('@/plugins/NativeWebRTCPlugin')
+      await NativeWebRTCPlugin.setAuthToken({ token })
+    } else {
+      // Android: CallForegroundService reads this from SharedPreferences to
+      // authenticate its native LiveKit/Firestore calls when answering while
+      // the WebView is asleep — see VoIPPlugin.java's setAuthToken.
+      const { VoIPPlugin } = await import('@/plugins/VoIPPlugin')
+      await VoIPPlugin.setAuthToken({ token })
+    }
   } catch {}
 }
 

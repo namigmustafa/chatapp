@@ -26,6 +26,21 @@ public class VoIPPlugin extends Plugin {
         call.resolve(result);
     }
 
+    // Hands a fresh Firebase ID token to CallForegroundService so it can
+    // authenticate its own Firestore/LiveKit-token REST calls when answering
+    // natively while the WebView is asleep — mirrors iOS's
+    // NativeWebRTCPlugin.setAuthToken. Must be refreshed on every resume (see
+    // useIncomingCalls.ts's syncAuthTokenToNative) since ID tokens expire ~1h.
+    @PluginMethod
+    public void setAuthToken(PluginCall call) {
+        String token = call.getString("token", "");
+        getContext().getSharedPreferences("chatapp_call", 0)
+            .edit()
+            .putString("firebase_id_token", token)
+            .apply();
+        call.resolve();
+    }
+
     @PluginMethod
     public void endCall(PluginCall call) {
         // No CallKit on Android — dismiss the call notification if still showing

@@ -28,6 +28,9 @@ export interface VoIPPluginDefinition {
   register(): Promise<VoIPRegistrationResult>
   getStartupConversation(): Promise<{ conversationId: string }>
   endCall(): Promise<void>
+  // Android only — pushes a fresh Firebase ID token into SharedPreferences so
+  // CallForegroundService can authenticate its native LiveKit/Firestore calls.
+  setAuthToken(options: { token: string }): Promise<void>
   addListener(
     eventName: 'registration',
     listenerFunc: (event: { token: string }) => void
@@ -51,6 +54,7 @@ const webImpl = {
   async register() { return {} as VoIPRegistrationResult },
   async getStartupConversation() { return { conversationId: '' } },
   async endCall() {},
+  async setAuthToken() {},
   async addListener(_event: string, _fn: unknown) {
     return { remove: () => {} }
   },

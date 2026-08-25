@@ -1,8 +1,10 @@
 package app.chatapp.p2p;
 
 import android.app.NotificationManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -54,13 +56,37 @@ public class CallActivity extends AppCompatActivity {
     private void handleAnswer(String callId) {
         dismissNotification();
         storeAction("answer", callId);
+        // Connect the mic to LiveKit natively RIGHT NOW — don't wait for
+        // MainActivity's WebView to cold-boot before audio starts (that boot
+        // delay was the whole reason lock-screen answers felt slow/dropped on
+        // Android, unlike iOS's native CallEngine.swift path). Must go through
+        // startForegroundService() since the service needs to keep running (and
+        // the mic open) even after this Activity/MainActivity are gone — the
+        // service calls startForeground() immediately for this action.
+        startCallService(CallForegroundService.ACTION_ANSWER, callId, true);
         openMainApp();
     }
 
     private void handleDecline(String callId) {
         dismissNotification();
         storeAction("decline", callId);
+        // Short-lived (one Firestore write, then stops) — a plain startService()
+        // is enough and avoids having to call startForeground() for a task this
+        // brief. Safe to background-start here since CallActivity itself is a
+        // visible foreground Activity at this point.
+        startCallService(CallForegroundService.ACTION_DECLINE, callId, false);
         openMainApp();
+    }
+
+    private void startCallService(String action, String callId, boolean foreground) {
+        Intent intent = new Intent(this, CallForegroundService.class);
+        intent.setAction(action);
+        intent.putExtra(CallForegroundService.EXTRA_CALL_ID, callId);
+        if (foreground && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent);
+        } else {
+            startService(intent);
+        }
     }
 
     private void storeAction(String action, String callId) {

@@ -144,15 +144,20 @@ export default function CallOverlay() {
 
     // iOS: CXAnswerCallAction always answers the call natively via CallEngine
     // (AppDelegate.swift's CXAnswerCallAction handler runs on every answer, whether
-    // the app is locked or already foregrounded). Re-running acceptCall() here would
-    // spin up a second, conflicting RTCPeerConnection over a call that's already
-    // live natively — that's what caused the call timer to reset to 0 (and force a
-    // real renegotiation) whenever the app was opened after answering from the lock
-    // screen. We must still move the call into `activeCall` (not just clear
+    // the app is locked or already foregrounded). Android: CallActivity.handleAnswer()
+    // now starts CallForegroundService, which answers via LiveKit natively the same
+    // way, before this JS effect ever runs. On both platforms, re-running acceptCall()
+    // here would spin up a second, conflicting LiveKit room connection over a call
+    // that's already live natively — that's what caused the call timer to reset to 0
+    // (and force a real reconnect) whenever the app was opened after answering from
+    // the lock screen (iOS) — the same bug is possible on Android now that it also
+    // answers natively. We must still move the call into `activeCall` (not just clear
     // `incomingCall`) — useIncomingCalls' cleanup effect calls dismissCallKit()
-    // (CXEndCallAction) whenever both incomingCall AND activeCall are empty, which
-    // otherwise hangs up the native call we just answered the instant this runs.
-    if (pendingCallKitAction === 'answer' && Capacitor.getPlatform() === 'ios') {
+    // (CXEndCallAction, iOS-only — a no-op on Android) whenever both incomingCall AND
+    // activeCall are empty, which otherwise hangs up the native call we just answered
+    // the instant this runs.
+    const platform = Capacitor.getPlatform()
+    if (pendingCallKitAction === 'answer' && (platform === 'ios' || platform === 'android')) {
       const callIdToLoad = pendingCallKitCallId ?? incomingCall?.id ?? null
       // Set activeCall in the SAME tick as clearing incomingCall (using the
       // in-memory call if we have it, else a minimal placeholder) so the
