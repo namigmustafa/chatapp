@@ -4,6 +4,7 @@ import { onRequest } from 'firebase-functions/v2/https'
 import { FieldValue } from 'firebase-admin/firestore'
 import { defineSecret } from 'firebase-functions/params'
 import * as apn from '@parse/node-apn'
+import { AccessToken } from 'livekit-server-sdk'
 
 admin.initializeApp()
 
@@ -11,6 +12,14 @@ admin.initializeApp()
 const APNS_PRIVATE_KEY = defineSecret('APNS_PRIVATE_KEY')
 const APNS_KEY_ID      = defineSecret('APNS_KEY_ID')
 const APNS_TEAM_ID     = defineSecret('APNS_TEAM_ID')
+
+// LiveKit self-hosted server credentials — set via:
+//   firebase functions:secrets:set LIVEKIT_API_KEY
+//   firebase functions:secrets:set LIVEKIT_API_SECRET
+// Values come from the Terraform-managed Key Vault (see infra/livekit-azure) —
+// `az keyvault secret show --vault-name <kv> --name livekit-api-key/-secret --query value -o tsv`.
+const LIVEKIT_API_KEY    = defineSecret('LIVEKIT_API_KEY')
+const LIVEKIT_API_SECRET = defineSecret('LIVEKIT_API_SECRET')
 
 // metered.ca account secret — set via: firebase functions:secrets:set METERED_API_KEY
 // Never sent to clients; used server-side to mint short-lived TURN credentials.
@@ -69,6 +78,59 @@ export const getIceServers = onRequest(
     } catch {
       res.status(502).json({ error: 'metered request failed' })
     }
+  }
+)
+
+// Mints a short-lived LiveKit room-join token for a specific call. The room
+// name is the callId itself, and the token is scoped ONLY to that room — a
+// caller can't use it to join any other room. We also verify the requesting
+// user is actually a participant of that call (caller or callee) before
+// minting anything, so a valid ID token alone isn't enough to join someone
+// else's call.
+export const getLiveKitToken = onRequest(
+  { secrets: [LIVEKIT_API_KEY, LIVEKIT_API_SECRET], cors: true },
+  async (req, res) => {
+    const authHeader = req.headers.authorization ?? ''
+    const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+    if (!idToken) {
+      res.status(401).json({ error: 'missing bearer token' })
+      return
+    }
+
+    let uid: string
+    try {
+      uid = (await admin.auth().verifyIdToken(idToken)).uid
+    } catch {
+      res.status(401).json({ error: 'invalid token' })
+      return
+    }
+
+    const callId = String(req.query.callId ?? '')
+    if (!callId) {
+      res.status(400).json({ error: 'missing callId' })
+      return
+    }
+
+    const callSnap = await db.doc(`calls/${callId}`).get()
+    if (!callSnap.exists) {
+      res.status(404).json({ error: 'call not found' })
+      return
+    }
+    const call = callSnap.data()!
+    if (call.callerUserId !== uid && call.calleeUserId !== uid) {
+      res.status(403).json({ error: 'not a participant of this call' })
+      return
+    }
+
+    const at = new AccessToken(LIVEKIT_API_KEY.value(), LIVEKIT_API_SECRET.value(), {
+      identity: uid,
+      // Ample for any realistic call length plus retry/reconnect slack; the
+      // room itself is torn down when the call doc's status leaves 'active'.
+      ttl: '4h',
+    })
+    at.addGrant({ room: callId, roomJoin: true, canPublish: true, canSubscribe: true })
+
+    res.json({ token: await at.toJwt() })
   }
 )
 

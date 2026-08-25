@@ -1,0 +1,78 @@
+#cloud-config
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+  - gnupg
+
+write_files:
+  - path: /opt/livekit/livekit.yaml
+    permissions: '0600'
+    content: |
+      port: 7880
+      bind_addresses:
+        - ""
+      rtc:
+        tcp_port: 7881
+        port_range_start: ${rtc_port_start}
+        port_range_end: ${rtc_port_end}
+        use_external_ip: true
+      redis:
+        address: 127.0.0.1:6379
+      keys:
+        ${livekit_api_key}: ${livekit_api_secret}
+
+  - path: /opt/livekit/Caddyfile
+    permissions: '0644'
+    content: |
+      ${livekit_domain} {
+        reverse_proxy livekit:7880
+        tls ${acme_email}
+      }
+
+  - path: /opt/livekit/docker-compose.yml
+    permissions: '0644'
+    content: |
+      version: "3.8"
+      services:
+        redis:
+          image: redis:7-alpine
+          restart: unless-stopped
+          network_mode: host
+          command: ["redis-server", "--appendonly", "yes", "--bind", "127.0.0.1"]
+          volumes:
+            - redis-data:/data
+
+        livekit:
+          image: livekit/livekit-server:latest
+          restart: unless-stopped
+          network_mode: host
+          command: ["--config", "/etc/livekit.yaml"]
+          volumes:
+            - /opt/livekit/livekit.yaml:/etc/livekit.yaml:ro
+          depends_on:
+            - redis
+
+        caddy:
+          image: caddy:2-alpine
+          restart: unless-stopped
+          network_mode: host
+          volumes:
+            - /opt/livekit/Caddyfile:/etc/caddy/Caddyfile:ro
+            - caddy-data:/data
+            - caddy-config:/config
+
+      volumes:
+        redis-data:
+        caddy-data:
+        caddy-config:
+
+runcmd:
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  - systemctl enable docker
+  - cd /opt/livekit && docker compose up -d
