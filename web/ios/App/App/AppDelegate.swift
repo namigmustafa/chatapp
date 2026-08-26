@@ -119,6 +119,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         update.supportsGrouping = false
         update.supportsUngrouping = false
 
+        // Known CallKit gap (confirmed on Apple's developer forums): when the app
+        // answers from a locked/killed state, `provider(_:didActivate:)` can simply
+        // never fire — leaving the audio session/engine stuck in the `.none`
+        // (disabled) state we set at launch, with zero audio despite a fully
+        // successful WebRTC/LiveKit connection. Apple's own workaround is to
+        // "pre-heat" the audio session category/mode right here, before even
+        // reporting the call, instead of waiting for didActivate to do it. If
+        // didActivate DOES fire later, its own (redundant) configuration is harmless.
+        try? AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
+        CallEngine.shared.audioSessionDidActivate(AVAudioSession.sharedInstance())
+
         callProvider?.reportNewIncomingCall(with: callUUID, update: update) { error in
             if let error = error {
                 print("[VoIP] reportNewIncomingCall error: \(error.localizedDescription)")
@@ -159,8 +170,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         // so JS can tell native-side timing apart from its own getUserMedia/WebRTC hang.
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "voip_answer_action_at")
         UserDefaults.standard.set(UIApplication.shared.applicationState.rawValue, forKey: "voip_answer_action_app_state")
-        // Do NOT configure AVAudioSession here — CallKit hasn't activated it yet.
-        // Audio setup and JS notification happen in didActivate audioSession below.
+        // Belt-and-suspenders alongside the pre-heat in didReceiveIncomingPushWith:
+        // some reports of this same didActivate-never-fires bug specifically call
+        // out re-asserting the category here, in the answer action itself, as
+        // part of the fix — cheap and idempotent if it's already set.
+        try? AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
+        CallEngine.shared.audioSessionDidActivate(AVAudioSession.sharedInstance())
+        // Full setup (setActive(true), etc.) still happens in didActivate below
+        // when/if CallKit does call it — this is just insurance for when it doesn't.
         //
         // Kick off the ENTIRE call natively (offer fetch, answer, ICE, audio) —
         // no dependency on the WebView/JS layer at all. This runs in parallel with

@@ -265,13 +265,20 @@ export default function CallOverlay() {
     return () => { if (hideTimerRef.current) clearTimeout(hideTimerRef.current) }
   }, [])
 
-  // Attach streams to video elements whenever stream or element changes
+  // Attach streams to video elements whenever the STREAM ITSELF changes.
+  // Deliberately NOT keyed on activeCall — that object gets a new reference
+  // on every Firestore doc update (status changes, debug-field writes, even
+  // this effect's own dbg() call below), which re-ran this effect on every
+  // such update and called .play() again on an element that was already
+  // playing the same stream. The browser aborts the prior in-flight play()
+  // promise when that happens ("interrupted by a new load request"), which
+  // looks exactly like "connected but no audio" from the user's side.
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream
       localVideoRef.current.play().catch(() => {})
     }
-  }, [localStream, activeCall])
+  }, [localStream])
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
@@ -284,13 +291,14 @@ export default function CallOverlay() {
         // A silently-swallowed rejection here (e.g. browser autoplay policy)
         // looks identical to "connected but no audio" from the user's side —
         // surface it so it's visible in the call doc instead of vanishing.
-        if (activeCall) {
-          const dbg = activeCall.callerUserId === user?.uid ? writeCallerDebug : writeCalleeDebug
-          void dbg(activeCall.id, 'audioPlayError:' + String(e?.message ?? e).slice(0, 100))
+        const call = activeCall
+        if (call) {
+          const dbg = call.callerUserId === user?.uid ? writeCallerDebug : writeCalleeDebug
+          void dbg(call.id, 'audioPlayError:' + String(e?.message ?? e).slice(0, 100))
         }
       })
     }
-  }, [remoteStream, activeCall])
+  }, [remoteStream])
 
   // ── Incoming call screen ─────────────────────────────────────────────────
   if (incomingCall && !activeCall) {
