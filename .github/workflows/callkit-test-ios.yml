@@ -1,0 +1,41 @@
+name: CallKit Test App (iOS) → Build Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'test-apps/livekit-callkit-test-ios/**'
+      - '.github/workflows/callkit-test-ios.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: test-apps/livekit-callkit-test-ios
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select latest Xcode
+        run: |
+          LATEST=$(ls /Applications/ | grep '^Xcode_' | sort -t_ -k2 -V | tail -1)
+          echo "Selecting Xcode: $LATEST"
+          sudo xcode-select -s "/Applications/$LATEST"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build (simulator, unsigned) — just verify the code compiles
+        run: |
+          xcodebuild build \
+            -project CallKitTest.xcodeproj \
+            -scheme App \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO
