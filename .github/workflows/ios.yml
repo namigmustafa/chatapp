@@ -3,6 +3,9 @@ name: iOS → TestFlight
 on:
   push:
     branches: [main, native-ios-webrtc]
+    paths:
+      - 'web/**'
+      - '.github/workflows/ios.yml'
   workflow_dispatch:
 
 jobs:

@@ -3,6 +3,9 @@ name: Android → Play Store (Internal Testing)
 on:
   push:
     branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/workflows/android.yml'
   workflow_dispatch:
 
 jobs:
