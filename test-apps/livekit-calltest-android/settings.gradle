@@ -1,0 +1,19 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        // Required by the LiveKit Android SDK's transitive dependencies (same
+        // as web/android/build.gradle's allprojects repositories block).
+        maven { url 'https://jitpack.io' }
+    }
+}
+rootProject.name = "LiveKitCallTest"
+include ':app'

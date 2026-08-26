@@ -1,0 +1,50 @@
+name: CallKit Test App (Android) → Build & Distribute
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'test-apps/livekit-calltest-android/**'
+      - '.github/workflows/callkit-test-android.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: test-apps/livekit-calltest-android
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Write local.properties
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Setup Node.js (for firebase-tools)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Distribute via Firebase App Distribution
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npx -y firebase-tools appdistribution:distribute \
+            app/build/outputs/apk/debug/app-debug.apk \
+            --app 1:656202089228:android:eeac2cd69b96faa5e23f29 \
+            --project chatapp-48786 \
+            --testers "namigmustafa@gmail.com" \
+            --release-notes "CallKit + LiveKit isolation test build (commit ${{ github.sha }})"
