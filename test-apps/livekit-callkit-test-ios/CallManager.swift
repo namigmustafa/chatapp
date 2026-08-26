@@ -108,7 +108,13 @@ class CallManager: NSObject, ObservableObject {
                 activeCallUUID = callUUID
             }
         } catch {
+            // The original example only logged this — invisible without a
+            // console attached, which is exactly why "Start call" appeared to
+            // do "nothing at all" on a real test device. Surface it in the UI.
             logger.critical("Failed to start call: \(error)")
+            Task { @MainActor in
+                callState = .errored(error)
+            }
         }
     }
 

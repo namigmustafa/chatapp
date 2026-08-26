@@ -7,5 +7,7 @@
 		<string>voip</string>
 		<string>audio</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Needed to publish audio to the test call.</string>
 </dict>
 </plist>
