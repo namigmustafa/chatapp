@@ -26,6 +26,10 @@ targets:
           - "fastlane/**"
           - "Gemfile"
           - "Gemfile.lock"
+          - "vendor/**"
+          - "*.ipa"
+          - "*.dSYM.zip"
+          - "*.app.dSYM.zip"
     info:
       path: Info.plist
       properties:
