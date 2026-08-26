@@ -130,29 +130,18 @@ public final class CallEngine: NSObject {
             let token = try await Self.fetchLiveKitToken(callId: callId)
             dbg("gotToken")
 
-            // Confirmed via livekit/client-sdk-swift#1069 (maintainer pblazej):
-            // setEngineAvailability(.none) disables playout entirely, and if a
-            // remote track subscribes WHILE availability is still .none, that
-            // track's InitPlayout/StartPlayout is a permanent no-op — flipping
-            // to .default afterward does NOT retroactively fix it. The caller's
-            // track can (and did, in production) subscribe during room.connect()
-            // below, which runs well before CallKit's didActivate would flip
-            // this. Flipping it here, before connect(), closes that window
-            // without reintroducing the #181 fulfill-order race — fulfill() is
-            // still only called by AppDelegate after this whole method returns.
-            try? AudioManager.shared.setEngineAvailability(.default)
-            dbg("engineAvailableEarly")
-
-            // Extra safety net on top of the above — confirmed real API in the
-            // current SDK source (Sources/LiveKit/Audio/Manager/AudioManager.swift)
-            // and confirmed by a practitioner report on #1069 to fix this exact
-            // "subscribed but engine never actually starts" symptom: pre-warms
-            // the shared audio engine (in a muted state) before the room connects,
-            // so playout can't get skipped by the subscribe-while-.none race no
-            // matter how these two calls end up racing internally.
-            try? await AudioManager.shared.setRecordingAlwaysPreparedMode(true)
-            dbg("recordingAlwaysPrepared")
-
+            // REVERTED: previously flipped engine availability to .default and
+            // called setRecordingAlwaysPreparedMode(true) here, before connect(),
+            // based on an extrapolation from livekit/client-sdk-swift#1069 (whose
+            // reporter wasn't even using CallKit — later research walked this
+            // back to "unconfirmed for CallKit"). Real production logs then
+            // showed a concrete, consistent failure: "Audio Engine Error(...
+            // code: -3010)" right after subscribedTrack, on every single call —
+            // starting the engine before CallKit's didActivate has actually
+            // activated the AVAudioSession is invalid and iOS rejects it outright.
+            // Engine availability is set to .default in audioSessionDidActivate()
+            // below, ONLY after CallKit confirms the session is really active —
+            // that ordering is what #181's fix and the official example rely on.
             let room = Room()
             room.add(delegate: self)
             self.room = room

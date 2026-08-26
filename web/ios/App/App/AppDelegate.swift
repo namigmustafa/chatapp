@@ -137,11 +137,24 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
             // When app is foreground, dismiss CallKit immediately — our in-app UI handles it.
             // Must be on main thread; done after completion() so Apple's requirement is satisfied.
             DispatchQueue.main.async {
-                if UIApplication.shared.applicationState == .active {
-                    self.callProvider?.reportCall(with: callUUID, endedAt: Date(), reason: .answeredElsewhere)
-                    self.activeCallUUID = nil
-                }
+                self.dismissCallKitIfForeground(callUUID: callUUID)
             }
+        }
+
+        // The one-shot check above can miss a real foreground app: if the push
+        // arrives during the brief .inactive transition (app resuming, or the
+        // app just launching to handle the VoIP push), applicationState isn't
+        // .active yet even though the user is about to be looking straight at
+        // our own in-app incoming-call screen — leaving CallKit's banner up
+        // alongside it (confirmed in production via screenshot: both showing
+        // at once). Re-check once the app actually finishes becoming active.
+        let becameActiveObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.dismissCallKitIfForeground(callUUID: callUUID)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            NotificationCenter.default.removeObserver(becameActiveObserver)
         }
 
         // Notify VoIPPlugin (JS bridge) — works when app is already running
@@ -150,6 +163,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
             object: nil,
             userInfo: callInfo
         )
+    }
+
+    // Ends the CallKit-reported call as .answeredElsewhere if the app is
+    // (now) foreground and the call hasn't already been answered/ended —
+    // our own in-app incoming-call screen is the UI in that case, and
+    // leaving CallKit's own banner up alongside it is confusing/redundant.
+    private func dismissCallKitIfForeground(callUUID: UUID) {
+        guard UIApplication.shared.applicationState == .active,
+              activeCallUUID == callUUID, !activeCallAnswered else { return }
+        callProvider?.reportCall(with: callUUID, endedAt: Date(), reason: .answeredElsewhere)
+        activeCallUUID = nil
     }
 
     // MARK: - CXProviderDelegate
