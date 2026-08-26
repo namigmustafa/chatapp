@@ -127,6 +127,13 @@ class CallManager: NSObject, ObservableObject {
             callState = .activeOutgoing
         }
         do {
+            // The `init()` above leaves LiveKit's audio engine disabled
+            // (`.none`) and only re-enables it inside `provider(_:didActivate:)`,
+            // which is a CXProviderDelegate callback — it never fires for a
+            // call that skips CallKit entirely, like this one. Without this,
+            // the room reports "connected" but mic capture and playback are
+            // both silently no-ops.
+            try AudioManager.shared.setEngineAvailability(.default)
             try await connectToRoom()
             Task { @MainActor in
                 callState = .connected
@@ -163,6 +170,7 @@ class CallManager: NSObject, ObservableObject {
     // room down directly.
     func endCallDirect() async {
         await room.disconnect()
+        try? AudioManager.shared.setEngineAvailability(.none)
         Task { @MainActor in
             callState = .idle
         }
