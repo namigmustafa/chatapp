@@ -2,7 +2,7 @@ name: CallKitTest
 options:
   bundleIdPrefix: app.chatapp.p2p
   deploymentTarget:
-    iOS: "15.0"
+    iOS: "17.0"
 
 packages:
   LiveKitClient:
@@ -16,7 +16,7 @@ targets:
   App:
     type: application
     platform: iOS
-    deploymentTarget: "15.0"
+    deploymentTarget: "17.0"
     sources:
       - path: .
         excludes:
