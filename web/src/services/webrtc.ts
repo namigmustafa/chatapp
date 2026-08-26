@@ -134,6 +134,19 @@ export interface CallDiagnosticRecord {
 // deployed and deleted by hand for every debugging round). Security rules
 // (firestore.rules `match /calls/{callId}`) already restrict reads to the
 // caller/callee themselves, so this can run straight from the client.
+// createdAt is written via serverTimestamp() (see initiateCall below), so it
+// comes back as a Firestore Timestamp object, not the plain number the Call
+// type claims — a naive `typeof === 'number'` check silently coerced every
+// record to 0 (1970-01-01), which broke the recency sort entirely and was
+// showing arbitrary old calls instead of the actual most recent ones.
+function toMillis(val: unknown): number {
+  if (typeof val === 'number') return val
+  if (val && typeof (val as { toMillis?: () => number }).toMillis === 'function') {
+    return (val as { toMillis: () => number }).toMillis()
+  }
+  return 0
+}
+
 export const getMyRecentCalls = async (userId: string, max = 15): Promise<CallDiagnosticRecord[]> => {
   const [asCaller, asCallee] = await Promise.all([
     getDocs(query(collection(db, CALLS), where('callerUserId', '==', userId))),
@@ -150,7 +163,7 @@ export const getMyRecentCalls = async (userId: string, max = 15): Promise<CallDi
         type: String(data.type ?? 'audio'),
         isCaller,
         otherAliasId: String((isCaller ? data.calleeAliasId : data.callerAliasId) ?? ''),
-        createdAt: typeof data.createdAt === 'number' ? data.createdAt : 0,
+        createdAt: toMillis(data.createdAt),
         callerDebugLog: data.callerDebugLog as string[] | undefined,
         calleeDebugLog: data.calleeDebugLog as string[] | undefined,
         calleeDebugNative: data.calleeDebugNative as string | undefined,
