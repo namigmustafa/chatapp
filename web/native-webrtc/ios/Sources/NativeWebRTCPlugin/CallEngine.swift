@@ -130,6 +130,29 @@ public final class CallEngine: NSObject {
             let token = try await Self.fetchLiveKitToken(callId: callId)
             dbg("gotToken")
 
+            // Confirmed via livekit/client-sdk-swift#1069 (maintainer pblazej):
+            // setEngineAvailability(.none) disables playout entirely, and if a
+            // remote track subscribes WHILE availability is still .none, that
+            // track's InitPlayout/StartPlayout is a permanent no-op — flipping
+            // to .default afterward does NOT retroactively fix it. The caller's
+            // track can (and did, in production) subscribe during room.connect()
+            // below, which runs well before CallKit's didActivate would flip
+            // this. Flipping it here, before connect(), closes that window
+            // without reintroducing the #181 fulfill-order race — fulfill() is
+            // still only called by AppDelegate after this whole method returns.
+            try? AudioManager.shared.setEngineAvailability(.default)
+            dbg("engineAvailableEarly")
+
+            // Extra safety net on top of the above — confirmed real API in the
+            // current SDK source (Sources/LiveKit/Audio/Manager/AudioManager.swift)
+            // and confirmed by a practitioner report on #1069 to fix this exact
+            // "subscribed but engine never actually starts" symptom: pre-warms
+            // the shared audio engine (in a muted state) before the room connects,
+            // so playout can't get skipped by the subscribe-while-.none race no
+            // matter how these two calls end up racing internally.
+            try? await AudioManager.shared.setRecordingAlwaysPreparedMode(true)
+            dbg("recordingAlwaysPrepared")
+
             let room = Room()
             room.add(delegate: self)
             self.room = room
@@ -210,12 +233,25 @@ extension CallEngine: RoomDelegate {
         if publication.kind == .audio, let track = publication.track {
             Task {
                 await track.set(reportStatistics: true)
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                let stream = track.statistics?.inboundRtpStream.first
-                let level = stream?.audioLevel ?? -1
-                let energy = stream?.totalAudioEnergy ?? -1
-                let heard = level > 0.001 || energy > 0
-                dbg("remoteAudioLevel:\(heard ? "detected" : "SILENCE")(level=\(level),energy=\(energy))")
+                // Two independent samples instead of one: a single narrow
+                // window right after subscribing can read as silent just
+                // because nobody happened to be talking in that exact
+                // moment, which looks identical to a real one-way-audio bug
+                // (confirmed the hard way — first version's single early
+                // sample read ~0.00003, indistinguishable from true silence,
+                // for a call that ran over a minute).
+                for delayNs: UInt64 in [3_000_000_000, 15_000_000_000] {
+                    try? await Task.sleep(nanoseconds: delayNs)
+                    let stream = track.statistics?.inboundRtpStream.first
+                    let level = stream?.audioLevel ?? -1
+                    let energy = stream?.totalAudioEnergy ?? -1
+                    // level is normalized 0...1; totalAudioEnergy accumulates
+                    // over time and was confirmed ~1e-9–1e-10 for genuine
+                    // silence in production — thresholds here are well above
+                    // both those noise floors, not "greater than zero".
+                    let heard = level > 0.01 || energy > 0.001
+                    dbg("remoteAudioLevel@\(delayNs / 1_000_000_000)s:\(heard ? "detected" : "SILENCE")(level=\(level),energy=\(energy))")
+                }
                 await track.set(reportStatistics: false)
             }
         }

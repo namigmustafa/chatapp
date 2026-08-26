@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { Capacitor } from '@capacitor/core'
 import { Room, RoomEvent, Track } from 'livekit-client'
 import { useCallStore } from '@/store/callStore'
 import { useAuthStore } from '@/store/authStore'
@@ -128,7 +127,6 @@ export const useWebRTC = () => {
       }, 30_000)
 
       try {
-        dbg('platform:' + Capacitor.getPlatform())
         dbg('caller:connecting')
         const room = await connectRoomWithRetry(callId)
         setRoom(room)
@@ -163,7 +161,6 @@ export const useWebRTC = () => {
   const acceptCall = useCallback(
     async (call: Call) => {
       const dbg = (stage: string) => { void writeCalleeDebug(call.id, stage) }
-      dbg('platform:' + Capacitor.getPlatform())
       dbg('button:answer')
       if (!LIVEKIT_URL) {
         dbg('accept:error:missingLiveKitUrl')

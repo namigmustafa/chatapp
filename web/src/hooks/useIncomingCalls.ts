@@ -157,6 +157,17 @@ async function showCallNotification(callerName: string, callType: string) {
   // On iOS, CallKit already shows the incoming call UI — skip local notification
   if (Capacitor.getPlatform() === 'ios') return
 
+  // When the app is already in the foreground, our own incoming-call banner/
+  // overlay is already visible — firing the system notification on top of it
+  // was showing both at once, and once the OS auto-dismissed its banner the
+  // WebView's touch input could be left in a bad state, making the in-app
+  // Answer/Decline buttons unresponsive. Only notify when backgrounded.
+  if (Capacitor.isNativePlatform()) {
+    const { App } = await import('@capacitor/app')
+    const { isActive } = await App.getState()
+    if (isActive) return
+  }
+
   if (Capacitor.isNativePlatform()) {
     try {
       const { LocalNotifications } = await import('@capacitor/local-notifications')
@@ -170,7 +181,7 @@ async function showCallNotification(callerName: string, callType: string) {
         }]
       })
     } catch {}
-  } else if ('Notification' in window && Notification.permission === 'granted') {
+  } else if (document.visibilityState !== 'visible' && 'Notification' in window && Notification.permission === 'granted') {
     new Notification(`Incoming ${callType === 'video' ? 'video' : 'voice'} call`, {
       body: callerName.toUpperCase(),
       icon: '/favicon.ico',

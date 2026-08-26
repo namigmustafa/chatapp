@@ -341,19 +341,28 @@ export default function CallOverlay() {
         analyser.fftSize = 512
         source.connect(analyser)
         const data = new Uint8Array(analyser.frequencyBinCount)
-        let peak = 0
-        const start = Date.now()
-        while (!cancelled && Date.now() - start < 3000) {
-          analyser.getByteTimeDomainData(data)
-          for (let i = 0; i < data.length; i++) {
-            const dev = Math.abs(data[i] - 128)
-            if (dev > peak) peak = dev
+
+        // Two independent windows instead of one — a single narrow sample
+        // right after connecting can read as silent just because nobody
+        // happened to be talking in that exact moment, indistinguishable
+        // from a real one-way-audio bug (confirmed the hard way: a native
+        // equivalent of this single-sample check read near-zero for a call
+        // that ran over a minute, purely from bad timing).
+        for (const label of ['3s', '15s']) {
+          if (label === '15s') await new Promise((r) => setTimeout(r, 9000))
+          let peak = 0
+          const start = Date.now()
+          while (!cancelled && Date.now() - start < 3000) {
+            analyser.getByteTimeDomainData(data)
+            for (let i = 0; i < data.length; i++) {
+              const dev = Math.abs(data[i] - 128)
+              if (dev > peak) peak = dev
+            }
+            await new Promise((r) => setTimeout(r, 200))
           }
-          await new Promise((r) => setTimeout(r, 200))
-        }
-        if (!cancelled) {
+          if (cancelled) break
           const heard = peak > 4 // small margin above the analyser's own noise floor
-          void dbg(call.id, `remoteAudioLevel:${heard ? 'detected' : 'SILENCE'}(peak=${peak})`)
+          void dbg(call.id, `remoteAudioLevel@${label}:${heard ? 'detected' : 'SILENCE'}(peak=${peak})`)
         }
       } catch (e) {
         if (!cancelled) void dbg(call.id, 'remoteAudioLevel:error:' + String((e as Error)?.message ?? e).slice(0, 80))

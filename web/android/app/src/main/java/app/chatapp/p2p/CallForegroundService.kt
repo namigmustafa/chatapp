@@ -126,29 +126,43 @@ class CallForegroundService : Service() {
     // than hardcoding one stats-object type, since the exact WebRTC stats
     // schema (inbound-rtp vs track-level) has shifted across spec revisions
     // and libwebrtc versions — resilience here matters more than precision.
+    // Two independent windows instead of one: a single narrow sample right
+    // after subscribing can read as silent just because nobody happened to
+    // be talking in that exact moment — indistinguishable from a real
+    // one-way-audio bug. iOS hit exactly this ambiguity in production (an
+    // early single sample read as near-zero for a call that ran a minute+).
+    // audioLevel (0..1 normalized) and totalAudioEnergy (unitless, accumulates
+    // over time) are tracked separately and thresholded separately — mixing
+    // them into one "peak" would let a large energy accumulation mask a
+    // genuinely silent audioLevel, or vice versa.
     private suspend fun sampleRemoteAudioLevel(track: Track) {
-        delay(1500) // let the track stabilize before sampling
-        var peak = 0.0
-        var samples = 0
-        val start = System.currentTimeMillis()
-        while (System.currentTimeMillis() - start < 3000) {
-            try {
-                val report = track.getRTCStats()
-                report?.statsMap?.values?.forEach { stat ->
-                    stat.members.forEach { (key, value) ->
-                        if (key.contains("audioLevel", ignoreCase = true) || key.contains("totalAudioEnergy", ignoreCase = true)) {
-                            (value as? Number)?.toDouble()?.let { v ->
-                                if (v > peak) peak = v
+        for ((label, initialDelay) in listOf("3s" to 1500L, "15s" to 12000L)) {
+            delay(initialDelay)
+            var peakLevel = 0.0
+            var peakEnergy = 0.0
+            var samples = 0
+            val start = System.currentTimeMillis()
+            while (System.currentTimeMillis() - start < 3000) {
+                try {
+                    val report = track.getRTCStats()
+                    report?.statsMap?.values?.forEach { stat ->
+                        stat.members.forEach { (key, value) ->
+                            val v = (value as? Number)?.toDouble() ?: return@forEach
+                            if (key.equals("audioLevel", ignoreCase = true)) {
+                                if (v > peakLevel) peakLevel = v
+                                samples++
+                            } else if (key.equals("totalAudioEnergy", ignoreCase = true)) {
+                                if (v > peakEnergy) peakEnergy = v
                                 samples++
                             }
                         }
                     }
-                }
-            } catch (_: Exception) {}
-            delay(300)
+                } catch (_: Exception) {}
+                delay(300)
+            }
+            val heard = peakLevel > 0.01 || peakEnergy > 0.001
+            dbg("remoteAudioLevel@$label:${if (heard) "detected" else "SILENCE"}(level=$peakLevel,energy=$peakEnergy,samples=$samples)")
         }
-        val heard = peak > 0.001 // audioLevel is normalized 0..1 — near-zero means silence
-        dbg("remoteAudioLevel:${if (heard) "detected" else "SILENCE"}(peak=$peak,samples=$samples)")
     }
 
     private fun fetchLiveKitToken(id: String, idToken: String): String {

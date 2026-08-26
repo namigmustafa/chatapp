@@ -12,6 +12,7 @@ import {
   getDocs,
 } from 'firebase/firestore'
 import type { Unsubscribe } from 'firebase/firestore'
+import { Capacitor } from '@capacitor/core'
 import { auth, db } from './firebase'
 import type { Call, CallType } from '@/types'
 
@@ -181,6 +182,14 @@ export const cleanupCall = async (callId: string) => {
   await deleteDoc(doc(db, CALLS, callId))
 }
 
+// Tagged at the SOURCE (here) rather than at each call site — a call site
+// that forgot to add its own "platform:X" breadcrumb was exactly how a batch
+// of real logs came back with zero platform info for several JS entries
+// (useIncomingCalls.ts and half of CallOverlay.tsx's dbg calls never got
+// tagged manually). Baking it into every single write here means no call
+// site anywhere, present or future, can miss it.
+const PLATFORM_TAG = `[${Capacitor.getPlatform()}]`
+
 // Diagnostic: record how far the callee's answer flow got, readable in the
 // Firestore console (calls/{id}.calleeDebugLog). Accumulates via arrayUnion —
 // a plain overwrite hid earlier stages behind whatever ran last (e.g. missed
@@ -188,7 +197,7 @@ export const cleanupCall = async (callId: string) => {
 // Best-effort, never throws.
 export const writeCalleeDebug = async (callId: string, stage: string) => {
   try {
-    await updateDoc(doc(db, CALLS, callId), { calleeDebugLog: arrayUnion(`${Date.now()}:${stage}`) })
+    await updateDoc(doc(db, CALLS, callId), { calleeDebugLog: arrayUnion(`${Date.now()}:${PLATFORM_TAG}${stage}`) })
   } catch { /* ignore */ }
 }
 
@@ -196,6 +205,6 @@ export const writeCalleeDebug = async (callId: string, stage: string) => {
 // connection state so a media failure is visible even without a live device console.
 export const writeCallerDebug = async (callId: string, stage: string) => {
   try {
-    await updateDoc(doc(db, CALLS, callId), { callerDebugLog: arrayUnion(`${Date.now()}:${stage}`) })
+    await updateDoc(doc(db, CALLS, callId), { callerDebugLog: arrayUnion(`${Date.now()}:${PLATFORM_TAG}${stage}`) })
   } catch { /* ignore */ }
 }
