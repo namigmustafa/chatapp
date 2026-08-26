@@ -10,9 +10,11 @@ function applyTheme(theme: Theme) {
 
   if (Capacitor.isNativePlatform()) {
     import('@capacitor/status-bar').then(({ StatusBar, Style }) => {
-      // Status bar content color is the inverse of the page: dark icons on a
-      // light page, light icons on a dark page.
-      StatusBar.setStyle({ style: theme === 'dark' ? Style.Light : Style.Dark }).catch(() => {})
+      // Capacitor's naming is by the BACKGROUND the style suits, not the icon
+      // color: Style.Dark -> light icons (for a dark page), Style.Light ->
+      // dark icons (for a light page). Had this backwards before, which made
+      // the clock/network icons render white-on-white in light mode.
+      StatusBar.setStyle({ style: theme === 'dark' ? Style.Dark : Style.Light }).catch(() => {})
     })
   }
 }

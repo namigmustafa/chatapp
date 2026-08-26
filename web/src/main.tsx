@@ -19,7 +19,7 @@ async function setupNative() {
   // mode is active gets silently dropped, leaving the clock/network icons
   // unreadable against the new light background.
   const theme = useThemeStore.getState().theme
-  await StatusBar.setStyle({ style: theme === 'dark' ? Style.Light : Style.Dark }).catch(() => {})
+  await StatusBar.setStyle({ style: theme === 'dark' ? Style.Dark : Style.Light }).catch(() => {})
 
   // Keyboard pushes content up instead of overlaying it
   Keyboard.setAccessoryBarVisible({ isVisible: false })
