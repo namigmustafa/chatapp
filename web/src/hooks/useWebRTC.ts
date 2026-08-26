@@ -30,6 +30,15 @@ export const useWebRTC = () => {
   } = useCallStore()
 
   const unsubscribeRef = useRef<(() => void)[]>([])
+  // Guards against rapid repeat taps on the call button — nothing previously
+  // stopped a second startCall() from firing before the first had even
+  // created its Firestore doc, each one spawning its own independent call
+  // (confirmed in production: 5 separate call docs created within 2 seconds
+  // from what was a single user action). activeCall/incomingCall in the
+  // store aren't set until well after the async work starts, so a ref
+  // flipped synchronously at the top of startCall is the only thing that
+  // actually closes the window in time.
+  const startingCallRef = useRef(false)
 
   const cleanup = useCallback(() => {
     unsubscribeRef.current.forEach((u) => u())
@@ -80,6 +89,12 @@ export const useWebRTC = () => {
         console.error('VITE_LIVEKIT_URL is not configured')
         return
       }
+      if (startingCallRef.current) return
+      startingCallRef.current = true
+      // Released after a couple seconds regardless of outcome — long enough to
+      // absorb a rapid-fire double tap, short enough not to block a genuine
+      // next call attempt (e.g. redialing after a quick rejection).
+      setTimeout(() => { startingCallRef.current = false }, 3000)
 
       let callId: string
       try {

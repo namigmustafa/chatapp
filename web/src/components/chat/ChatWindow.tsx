@@ -9,6 +9,7 @@ import { subscribePresence } from '@/services/presence'
 import type { Message } from '@/types'
 import { playMessageSound } from '@/utils/notificationSound'
 import { useWebRTC } from '@/hooks/useWebRTC'
+import { useCallStore } from '@/store/callStore'
 import { subscribeAlias, getAliasStatus } from '@/services/aliases'
 import type { Alias } from '@/types'
 import AliasAvatar from '@/components/ui/AliasAvatar'
@@ -33,6 +34,8 @@ export default function ChatWindow({
 }: Props) {
   const { user } = useAuthStore()
   const { startCall } = useWebRTC()
+  const { activeCall, incomingCall } = useCallStore()
+  const alreadyInACall = !!activeCall || !!incomingCall
   useSwipeBack({ onBack: () => onBack?.(), enabled: !!onBack })
   const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState('')
@@ -176,12 +179,12 @@ export default function ChatWindow({
 
         {(() => {
           const st = otherAlias && user ? getAliasStatus(otherAlias, user.uid) : null
-          const canCall = !st || st.reachable
+          const canCall = (!st || st.reachable) && !alreadyInACall
           return (
             <div className="flex items-center gap-0.5 flex-shrink-0">
               <button
                 onClick={() => canCall && startCall(myAliasId, otherAliasId, otherUserId, 'audio', conversationId)}
-                title={canCall ? 'Audio call' : 'Alias is currently unreachable'}
+                title={alreadyInACall ? 'Already in a call' : canCall ? 'Audio call' : 'Alias is currently unreachable'}
                 disabled={!canCall}
                 className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
