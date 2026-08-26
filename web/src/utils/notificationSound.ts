@@ -59,3 +59,21 @@ export const startRingtone = (): (() => void) => {
   ring().catch(() => {})
   return () => { stopped = true }
 }
+
+// Ringback tone: what the CALLER hears while the other side's phone is
+// ringing (there was previously no sound at all on this side — startRingtone
+// above only plays for the callee). Classic two-tone "beep-beep... pause"
+// dial-tone-style pattern, distinct from the incoming-ring pattern above.
+export const startRingback = (): (() => void) => {
+  let stopped = false
+
+  const ring = async () => {
+    while (!stopped) {
+      await playTone(425, 0,   0.4, 0.2)
+      await new Promise((r) => setTimeout(r, 2000))
+    }
+  }
+
+  ring().catch(() => {})
+  return () => { stopped = true }
+}

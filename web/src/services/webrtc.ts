@@ -9,6 +9,7 @@ import {
   query,
   where,
   arrayUnion,
+  getDocs,
 } from 'firebase/firestore'
 import type { Unsubscribe } from 'firebase/firestore'
 import { auth, db } from './firebase'
@@ -113,6 +114,50 @@ export const subscribeIncomingCalls = (
       }
     })
   })
+}
+
+export interface CallDiagnosticRecord {
+  id: string
+  status: string
+  type: string
+  isCaller: boolean
+  otherAliasId: string
+  createdAt: number
+  callerDebugLog?: string[]
+  calleeDebugLog?: string[]
+  calleeDebugNative?: string
+}
+
+// Reads the current user's own recent calls straight from Firestore — no
+// server round-trip and no temporary Cloud Function needed (previously the
+// only way to see this data was a throwaway unauthenticated debug endpoint
+// deployed and deleted by hand for every debugging round). Security rules
+// (firestore.rules `match /calls/{callId}`) already restrict reads to the
+// caller/callee themselves, so this can run straight from the client.
+export const getMyRecentCalls = async (userId: string, max = 15): Promise<CallDiagnosticRecord[]> => {
+  const [asCaller, asCallee] = await Promise.all([
+    getDocs(query(collection(db, CALLS), where('callerUserId', '==', userId))),
+    getDocs(query(collection(db, CALLS), where('calleeUserId', '==', userId))),
+  ])
+  const seen = new Map<string, CallDiagnosticRecord>()
+  for (const snap of [asCaller, asCallee]) {
+    for (const d of snap.docs) {
+      const data = d.data() as Record<string, unknown>
+      const isCaller = data.callerUserId === userId
+      seen.set(d.id, {
+        id: d.id,
+        status: String(data.status ?? 'unknown'),
+        type: String(data.type ?? 'audio'),
+        isCaller,
+        otherAliasId: String((isCaller ? data.calleeAliasId : data.callerAliasId) ?? ''),
+        createdAt: typeof data.createdAt === 'number' ? data.createdAt : 0,
+        callerDebugLog: data.callerDebugLog as string[] | undefined,
+        calleeDebugLog: data.calleeDebugLog as string[] | undefined,
+        calleeDebugNative: data.calleeDebugNative as string | undefined,
+      })
+    }
+  }
+  return [...seen.values()].sort((a, b) => b.createdAt - a.createdAt).slice(0, max)
 }
 
 export const cleanupCall = async (callId: string) => {

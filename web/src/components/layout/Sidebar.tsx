@@ -224,7 +224,7 @@ export default function Sidebar({ activeConvId, conversations, onSelectConversat
             <button
               key={conv.id}
               onClick={() => onSelectConversation(conv.id, otherUserId, otherAliasId, myAliasId)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 mx-2 mb-0.5 text-left transition-colors rounded-2xl ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 mx-2 mb-0.5 text-left transition-colors rounded-2xl border-b border-zinc-200/70 dark:border-zinc-800/60 ${
                 activeConvId === conv.id
                   ? 'bg-indigo-100 dark:bg-[#2a3942]'
                   : 'hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'

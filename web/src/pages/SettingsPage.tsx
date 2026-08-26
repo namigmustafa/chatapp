@@ -6,6 +6,8 @@ import { useThemeStore } from '@/store/themeStore'
 import { signOut } from '@/services/auth'
 import AliasManager from '@/components/alias/AliasManager'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
+import { getMyRecentCalls } from '@/services/webrtc'
+import type { CallDiagnosticRecord } from '@/services/webrtc'
 
 type Section = 'aliases' | 'account' | 'notifications' | 'appearance'
 
@@ -202,6 +204,94 @@ function CallDiagnostics() {
   )
 }
 
+function formatRecord(r: CallDiagnosticRecord): string {
+  const lines = [
+    `call ${r.id}`,
+    `role: ${r.isCaller ? 'caller' : 'callee'} · type: ${r.type} · status: ${r.status}`,
+    `time: ${new Date(r.createdAt).toLocaleString()}`,
+    `caller log: ${r.callerDebugLog?.join(' | ') || '(none)'}`,
+    `callee log (JS): ${r.calleeDebugLog?.join(' | ') || '(none)'}`,
+    `callee log (native): ${r.calleeDebugNative || '(none)'}`,
+  ]
+  return lines.join('\n')
+}
+
+function RecentCallsLog() {
+  const { user } = useAuthStore()
+  const [calls, setCalls] = useState<CallDiagnosticRecord[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  const load = () => {
+    if (!user) return
+    setCalls(null)
+    setError(null)
+    getMyRecentCalls(user.uid)
+      .then(setCalls)
+      .catch((e) => setError(String(e?.message ?? e)))
+  }
+
+  useEffect(load, [user?.uid])
+
+  const copy = async (r: CallDiagnosticRecord) => {
+    try {
+      await navigator.clipboard.writeText(formatRecord(r))
+      setCopiedId(r.id)
+      setTimeout(() => setCopiedId((cur) => (cur === r.id ? null : cur)), 2000)
+    } catch { /* clipboard unavailable — no-op */ }
+  }
+
+  return (
+    <div className="bg-zinc-200/60 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700 rounded-2xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3.5">
+        <div>
+          <p className="text-sm text-zinc-900 dark:text-white">Recent call logs</p>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Your last calls, straight from Firestore — tap to expand, copy to share</p>
+        </div>
+        <button onClick={load} className="text-xs text-indigo-500 dark:text-indigo-400 font-medium px-2 py-1">Refresh</button>
+      </div>
+      <div className="divide-y divide-zinc-300/50 dark:divide-zinc-700/50">
+        {error && <p className="px-4 pb-3 text-xs text-red-400">{error}</p>}
+        {calls === null && !error && <p className="px-4 pb-3 text-xs text-zinc-500">Loading…</p>}
+        {calls?.length === 0 && <p className="px-4 pb-3 text-xs text-zinc-500">No calls yet.</p>}
+        {calls?.map((r) => {
+          const expanded = expandedId === r.id
+          return (
+            <div key={r.id}>
+              <button
+                onClick={() => setExpandedId(expanded ? null : r.id)}
+                className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-zinc-900 dark:text-white truncate">
+                    {r.isCaller ? 'You called' : 'Called you'} · {r.otherAliasId || '?'} · {r.status}
+                  </p>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">{new Date(r.createdAt).toLocaleString()}</p>
+                </div>
+                <ChevronRight />
+              </button>
+              {expanded && (
+                <div className="px-4 pb-3 flex flex-col gap-2">
+                  <pre className="text-[10px] leading-relaxed whitespace-pre-wrap break-all bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-2.5 text-zinc-700 dark:text-zinc-300">
+                    {formatRecord(r)}
+                  </pre>
+                  <button
+                    onClick={() => copy(r)}
+                    className="self-start text-xs font-medium text-indigo-500 dark:text-indigo-400 px-2 py-1"
+                  >
+                    {copiedId === r.id ? 'Copied ✓' : 'Copy to clipboard'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function NotificationsSection() {
   return (
     <div className="flex flex-col gap-6 p-6 max-w-xl mx-auto">
@@ -210,6 +300,7 @@ function NotificationsSection() {
         <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">Sound and alert preferences</p>
       </div>
       <CallDiagnostics />
+      <RecentCallsLog />
       <div className="bg-zinc-200/60 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700 rounded-2xl divide-y divide-zinc-200/50 dark:divide-zinc-700/50">
         <div className="px-4 py-3.5 flex items-center justify-between">
           <div>

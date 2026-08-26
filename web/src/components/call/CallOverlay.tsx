@@ -6,7 +6,7 @@ import { useUIStore } from '@/store/uiStore'
 import { useWebRTC } from '@/hooks/useWebRTC'
 import { writeCalleeDebug, writeCallerDebug, subscribeCall } from '@/services/webrtc'
 import AliasAvatar from '@/components/ui/AliasAvatar'
-import { startRingtone } from '@/utils/notificationSound'
+import { startRingtone, startRingback } from '@/utils/notificationSound'
 import IncomingCallBanner from './IncomingCallBanner'
 import type { Call } from '@/types'
 
@@ -249,6 +249,16 @@ export default function CallOverlay() {
     const stop = startRingtone()
     return stop
   }, [!!incomingCall, !!activeCall])
+
+  // Ringback tone for the CALLER while the other side's phone is ringing —
+  // previously there was no audio feedback at all on this side, so the app
+  // looked hung even though the call was correctly in progress.
+  useEffect(() => {
+    const isRinging = activeCall?.status === 'ringing' && activeCall.callerUserId === user?.uid
+    if (!isRinging) return
+    const stop = startRingback()
+    return stop
+  }, [activeCall?.status, activeCall?.callerUserId, user?.uid])
 
   const [showControls, setShowControls] = useState(true)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
