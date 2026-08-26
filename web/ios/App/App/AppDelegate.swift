@@ -161,16 +161,24 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         UserDefaults.standard.set(UIApplication.shared.applicationState.rawValue, forKey: "voip_answer_action_app_state")
         // Do NOT configure AVAudioSession here — CallKit hasn't activated it yet.
         // Audio setup and JS notification happen in didActivate audioSession below.
-        action.fulfill()
-        DispatchQueue.main.async { self.wakeWebView() }
-
+        //
         // Kick off the ENTIRE call natively (offer fetch, answer, ICE, audio) —
         // no dependency on the WebView/JS layer at all. This runs in parallel with
         // CallKit's own audio session activation below; the peer connection and
         // signaling don't need an active audio session to start negotiating.
+        //
+        // IMPORTANT: this must happen BEFORE action.fulfill() — fulfilling the
+        // action is what triggers CallKit to activate the audio session, and
+        // didActivate can fire fast enough to race CallEngine.answerCall()'s own
+        // `self.callId = callId` assignment if it runs after. When that race was
+        // lost, CallEngine silently dropped the didActivate signal (callId still
+        // nil), which looked identical to CallKit never activating audio at all.
         if let callId = activeCallId, !callId.isEmpty {
             CallEngine.shared.answerCall(callId: callId)
         }
+
+        action.fulfill()
+        DispatchQueue.main.async { self.wakeWebView() }
     }
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
