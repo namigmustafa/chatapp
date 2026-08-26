@@ -49,3 +49,13 @@ targets:
         product: LiveKit
       - package: SwiftLog
         product: Logging
+
+schemes:
+  App:
+    build:
+      targets:
+        App: all
+    run:
+      config: Debug
+    archive:
+      config: Release
