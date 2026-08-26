@@ -8,6 +8,9 @@ packages:
   LiveKitClient:
     url: https://github.com/livekit/client-sdk-swift.git
     from: 2.0.0
+  SwiftLog:
+    url: https://github.com/apple/swift-log.git
+    from: 1.5.0
 
 targets:
   App:
@@ -41,3 +44,5 @@ targets:
     dependencies:
       - package: LiveKitClient
         product: LiveKit
+      - package: SwiftLog
+        product: Logging
