@@ -118,6 +118,27 @@ class CallManager: NSObject, ObservableObject {
         }
     }
 
+    // Our real app's caller side never goes through CallKit at all — it
+    // connects to the LiveKit room directly. `CXStartCallAction` (above)
+    // requires an Apple entitlement we don't have and don't actually need
+    // for this. This mirrors the real caller path instead.
+    func startCallDirect() async {
+        Task { @MainActor in
+            callState = .activeOutgoing
+        }
+        do {
+            try await connectToRoom()
+            Task { @MainActor in
+                callState = .connected
+            }
+        } catch {
+            logger.critical("Failed to connect directly: \(error)")
+            Task { @MainActor in
+                callState = .errored(error)
+            }
+        }
+    }
+
     func endCall() async {
         Task { @MainActor in
             // Read `activeCallUUID` on main thread
@@ -134,6 +155,16 @@ class CallManager: NSObject, ObservableObject {
                     logger.critical("Failed to end call: \(error)")
                 }
             }
+        }
+    }
+
+    // `startCallDirect()` never registers a CallKit call, so there's no
+    // `activeCallUUID`/`CXEndCallAction` to route through — just tear the
+    // room down directly.
+    func endCallDirect() async {
+        await room.disconnect()
+        Task { @MainActor in
+            callState = .idle
         }
     }
 

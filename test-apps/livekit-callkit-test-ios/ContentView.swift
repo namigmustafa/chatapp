@@ -121,13 +121,18 @@ struct ContentView: View {
                     if callManager.hasActiveCall {
                         Button("End call") {
                             Task {
-                                await callManager.endCall()
+                                // "Start call" below connects directly (no CallKit call
+                                // was ever registered), so tear it down the same way.
+                                await callManager.endCallDirect()
                             }
                         }
                     } else {
+                        // Our real app's caller never uses CXStartCallAction (that
+                        // requires an Apple entitlement we don't have/need) — this
+                        // connects straight to the room, same as production.
                         Button("Start call") {
                             Task {
-                                await callManager.startCall(handle: "user1")
+                                await callManager.startCallDirect()
                             }
                         }
                         Button("Simulate incoming call") {
