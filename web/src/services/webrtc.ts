@@ -121,6 +121,8 @@ export interface CallDiagnosticRecord {
   status: string
   type: string
   isCaller: boolean
+  myAliasId: string
+  otherUserId: string
   otherAliasId: string
   createdAt: number
   callerDebugLog?: string[]
@@ -162,6 +164,8 @@ export const getMyRecentCalls = async (userId: string, max = 15): Promise<CallDi
         status: String(data.status ?? 'unknown'),
         type: String(data.type ?? 'audio'),
         isCaller,
+        myAliasId: String((isCaller ? data.callerAliasId : data.calleeAliasId) ?? ''),
+        otherUserId: String((isCaller ? data.calleeUserId : data.callerUserId) ?? ''),
         otherAliasId: String((isCaller ? data.calleeAliasId : data.callerAliasId) ?? ''),
         createdAt: toMillis(data.createdAt),
         callerDebugLog: data.callerDebugLog as string[] | undefined,

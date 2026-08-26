@@ -12,6 +12,7 @@ import android.os.IBinder
 import io.livekit.android.LiveKit
 import io.livekit.android.events.RoomEvent
 import io.livekit.android.room.Room
+import io.livekit.android.room.track.Track
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -63,12 +64,15 @@ class CallForegroundService : Service() {
         val id = intent?.getStringExtra(EXTRA_CALL_ID)
 
         if (action == ACTION_HANGUP) {
+            dbg("button:hangUp")
             endCall("ended")
             return START_NOT_STICKY
         }
 
         if (action == ACTION_DECLINE && id != null) {
             callId = id
+            debugLog.clear()
+            dbg("button:decline")
             val token = idToken()
             if (token != null) {
                 scope.launch {
@@ -116,6 +120,37 @@ class CallForegroundService : Service() {
         }
     }
 
+    // Samples real WebRTC stats for a few seconds after a remote audio track
+    // is subscribed and writes a one-time verdict. Scans every stats entry's
+    // members for anything named like "audioLevel"/"totalAudioEnergy" rather
+    // than hardcoding one stats-object type, since the exact WebRTC stats
+    // schema (inbound-rtp vs track-level) has shifted across spec revisions
+    // and libwebrtc versions — resilience here matters more than precision.
+    private suspend fun sampleRemoteAudioLevel(track: Track) {
+        delay(1500) // let the track stabilize before sampling
+        var peak = 0.0
+        var samples = 0
+        val start = System.currentTimeMillis()
+        while (System.currentTimeMillis() - start < 3000) {
+            try {
+                val report = track.getRTCStats()
+                report?.statsMap?.values?.forEach { stat ->
+                    stat.members.forEach { (key, value) ->
+                        if (key.contains("audioLevel", ignoreCase = true) || key.contains("totalAudioEnergy", ignoreCase = true)) {
+                            (value as? Number)?.toDouble()?.let { v ->
+                                if (v > peak) peak = v
+                                samples++
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+            delay(300)
+        }
+        val heard = peak > 0.001 // audioLevel is normalized 0..1 — near-zero means silence
+        dbg("remoteAudioLevel:${if (heard) "detected" else "SILENCE"}(peak=$peak,samples=$samples)")
+    }
+
     private fun fetchLiveKitToken(id: String, idToken: String): String {
         val url = URL("$TOKEN_ENDPOINT?callId=$id")
         val conn = url.openConnection() as HttpURLConnection
@@ -131,6 +166,7 @@ class CallForegroundService : Service() {
 
     private fun answer(id: String) {
         debugLog.clear()
+        dbg("button:answer")
         scope.launch {
             val idToken = idToken()
             if (idToken == null) {
@@ -155,17 +191,38 @@ class CallForegroundService : Service() {
 
                 // Diagnostic only — iOS's equivalent RoomDelegate.didSubscribeTrack
                 // breadcrumb was what proved the CallKit fulfill-order race was real
-                // in production. Android has no matching listener anywhere in this
-                // file, so we have zero visibility into whether the caller's track
+                // in production. Android had no matching listener anywhere in this
+                // file, so there was zero visibility into whether the caller's track
                 // actually gets subscribed on this side. Wired before connect() so
                 // an event firing right as the connection completes isn't missed.
+                // Covers the full connection lifecycle, not just the happy path —
+                // reconnects and subscription failures were previously invisible too.
                 scope.launch {
                     newRoom.events.events.collect { event ->
                         when (event) {
-                            is RoomEvent.TrackSubscribed -> dbg("subscribedTrack:${event.track.kind}:from:${event.participant.identity}")
-                            is RoomEvent.TrackSubscriptionFailed -> dbg("subscribeFailed:${event.sid}:${event.exception.message?.take(80)}")
+                            is RoomEvent.Connected -> dbg("roomEvent:connected")
+                            is RoomEvent.Reconnecting -> dbg("roomEvent:reconnecting")
+                            is RoomEvent.Reconnected -> dbg("roomEvent:reconnected")
+                            is RoomEvent.Disconnected -> dbg("roomEvent:disconnected:${event.reason}")
                             is RoomEvent.ParticipantConnected -> dbg("participantConnected:${event.participant.identity}")
-                            is RoomEvent.Disconnected -> dbg("roomDisconnected")
+                            is RoomEvent.ParticipantDisconnected -> dbg("participantDisconnected:${event.participant.identity}")
+                            is RoomEvent.TrackPublished -> dbg("trackPublished:${event.publication.kind}:from:${event.participant.identity}")
+                            is RoomEvent.TrackSubscribed -> {
+                                dbg("subscribedTrack:${event.track.kind}:from:${event.participant.identity}")
+                                if (event.track.kind == Track.Kind.AUDIO) {
+                                    // Subscribing is only a SIGNALING-level success — it does
+                                    // NOT mean audio is actually flowing (this exact gap was
+                                    // the root cause of the iOS CallKit one-way-audio bug:
+                                    // trackSubscribed fired while the local engine was still
+                                    // silent). Sample real WebRTC stats to get a MEDIA-level
+                                    // verdict instead of trusting the signaling event alone.
+                                    scope.launch { sampleRemoteAudioLevel(event.track) }
+                                }
+                            }
+                            is RoomEvent.TrackUnsubscribed -> dbg("unsubscribedTrack:${event.track.kind}:from:${event.participant.identity}")
+                            is RoomEvent.TrackSubscriptionFailed -> dbg("subscribeFailed:${event.sid}:${event.exception.message?.take(80)}")
+                            is RoomEvent.TrackMuted -> dbg("trackMuted:${event.publication.kind}:from:${event.participant.identity}")
+                            is RoomEvent.TrackUnmuted -> dbg("trackUnmuted:${event.publication.kind}:from:${event.participant.identity}")
                             else -> {}
                         }
                     }
@@ -210,6 +267,7 @@ class CallForegroundService : Service() {
                 val call = try { FirestoreClient.getDocument("calls/$id", idToken) } catch (_: Exception) { null }
                 val status = call?.optString("status")
                 if (call == null || status != "active") {
+                    dbg("polledStatus:${status ?: "docMissing"}")
                     endCall(null) // Firestore already reflects the terminal state; don't overwrite it.
                     break
                 }

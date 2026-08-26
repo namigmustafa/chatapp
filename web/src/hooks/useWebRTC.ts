@@ -133,8 +133,13 @@ export const useWebRTC = () => {
         wireRemoteAudio(room, dbg)
         dbg('caller:connected')
 
+        let lastStatus = 'ringing'
         const unsubCall = subscribeCall(callId, (call) => {
           if (!call) return
+          if (call.status !== lastStatus) {
+            dbg('status:' + call.status)
+            lastStatus = call.status
+          }
           setActiveCall(call)
           if (call.status === 'active') clearTimeout(ringTimeout)
           if (['ended', 'rejected', 'missed', 'callee_error'].includes(call.status)) {
@@ -156,6 +161,7 @@ export const useWebRTC = () => {
   const acceptCall = useCallback(
     async (call: Call) => {
       const dbg = (stage: string) => { void writeCalleeDebug(call.id, stage) }
+      dbg('button:answer')
       if (!LIVEKIT_URL) {
         dbg('accept:error:missingLiveKitUrl')
         calleeError(call.id).catch(() => {})
@@ -173,8 +179,13 @@ export const useWebRTC = () => {
         setIncomingCall(null)
         setActiveCall({ ...call, status: 'active' })
 
+        let lastStatus = 'active'
         const unsubCall = subscribeCall(call.id, (updated) => {
           if (!updated) return
+          if (updated.status !== lastStatus) {
+            dbg('status:' + updated.status)
+            lastStatus = updated.status
+          }
           setActiveCall(updated)
           if (updated.status === 'ended') {
             setTimeout(() => cleanup(), 1500)
@@ -194,13 +205,25 @@ export const useWebRTC = () => {
     [setIncomingCall, setActiveCall, setRoom, cleanup]
   )
 
+  // Both sides can end up calling declineCall/hangUp (whoever is looking at
+  // the CallOverlay at the time), so which debug field to write to has to be
+  // resolved per-call from whichever side the current user actually is.
+  const dbgFor = (callerUserId: string | undefined, callId: string) =>
+    (stage: string) => {
+      void (user?.uid === callerUserId ? writeCallerDebug : writeCalleeDebug)(callId, stage)
+    }
+
   const declineCall = useCallback(async (callId: string) => {
+    const call = useCallStore.getState().incomingCall ?? useCallStore.getState().activeCall
+    dbgFor(call?.callerUserId, callId)('button:decline')
     await rejectCall(callId)
     cleanup()
-  }, [cleanup])
+  }, [cleanup, user])
 
   const hangUp = useCallback(async (callId: string) => {
-    const currentStatus = useCallStore.getState().activeCall?.status
+    const call = useCallStore.getState().activeCall
+    dbgFor(call?.callerUserId, callId)('button:hangUp')
+    const currentStatus = call?.status
     if (currentStatus === 'ringing') {
       await missedCall(callId)
     } else {
@@ -208,7 +231,7 @@ export const useWebRTC = () => {
     }
     cleanup()
     setTimeout(() => cleanupCall(callId), 5000)
-  }, [cleanup])
+  }, [cleanup, user])
 
   useEffect(() => {
     return () => {

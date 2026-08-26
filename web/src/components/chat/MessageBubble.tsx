@@ -189,7 +189,7 @@ export default function MessageBubble({ message, isOwn }: Props) {
         style={{ backgroundColor: bg, borderRadius: radius }}
       >
         {/* Invisible trailing spacer prevents last word overlapping the timestamp */}
-        <p className="break-words leading-relaxed">
+        <p className="break-words leading-relaxed whitespace-pre-wrap">
           {message.content}
           <span className="inline-block w-16 select-none" aria-hidden />
         </p>

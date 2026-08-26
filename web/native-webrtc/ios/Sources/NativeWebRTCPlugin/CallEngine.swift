@@ -112,6 +112,7 @@ public final class CallEngine: NSObject {
     public func answerCall(callId: String) async throws {
         self.callId = callId
         self.debugLog = []
+        dbg("button:answer")
         dbg("start")
 
         do {
@@ -154,12 +155,16 @@ public final class CallEngine: NSObject {
     /// call rejectCall() itself is not reliable while locked, so the caller would
     /// otherwise just ring until the 30s timeout marks it 'missed' instead.
     public func declineCall(callId: String) {
+        self.callId = callId
+        self.debugLog = []
+        dbg("button:decline")
         Task { try? await FirestoreClient.updateDocument(path: "calls/\(callId)", fields: ["status": "rejected"]) }
     }
 
     /// Same reasoning, for hanging up a call that WAS answered natively — the
     /// caller must not be left thinking the call is still active.
     public func hangUpAnsweredCall(callId: String) {
+        dbg("button:hangUp")
         Task { try? await FirestoreClient.updateDocument(path: "calls/\(callId)", fields: ["status": "ended"]) }
     }
 
@@ -194,6 +199,25 @@ extension CallEngine: RoomDelegate {
         // explain one-way-audio reports where the SFU-level subscription
         // (confirmed via this very breadcrumb) succeeded but no sound came out.
         dbg("subscribedTrack")
+
+        // "subscribedTrack" above is only a SIGNALING-level success — it does
+        // NOT mean audio is actually flowing (this exact gap was the root
+        // cause of the CallKit fulfill-order bug this file already fixes).
+        // Sample real WebRTC inbound-rtp stats (audioLevel/totalAudioEnergy,
+        // confirmed fields on InboundRtpStreamStatistics in the SDK source)
+        // to get a MEDIA-level verdict instead of trusting signaling alone.
+        if publication.kind == .audio, let track = publication.track {
+            Task {
+                await track.set(reportStatistics: true)
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                let stream = track.statistics?.inboundRtpStream.first
+                let level = stream?.audioLevel ?? -1
+                let energy = stream?.totalAudioEnergy ?? -1
+                let heard = level > 0.001 || energy > 0
+                dbg("remoteAudioLevel:\(heard ? "detected" : "SILENCE")(level=\(level),energy=\(energy))")
+                await track.set(reportStatistics: false)
+            }
+        }
     }
 
     public func room(_ room: Room, didUpdateConnectionState connectionState: ConnectionState, from oldValue: ConnectionState) {
@@ -201,9 +225,22 @@ extension CallEngine: RoomDelegate {
     }
 
     public func room(_ room: Room, participantDidDisconnect participant: RemoteParticipant) {
+        dbg("participantDisconnected")
         // The caller left the room (hung up) — mirror that into Firestore so
         // this device's CallKit session also tears down, same as a local hangup.
         guard let callId = self.callId else { return }
         Task { try? await FirestoreClient.updateDocument(path: "calls/\(callId)", fields: ["status": "ended"]) }
+    }
+
+    public func room(_ room: Room, participantDidConnect participant: RemoteParticipant) {
+        dbg("participantConnected")
+    }
+
+    public func room(_ room: Room, participant: RemoteParticipant, didUnsubscribeTrack publication: RemoteTrackPublication) {
+        dbg("unsubscribedTrack")
+    }
+
+    public func room(_ room: Room, participant: Participant, trackPublication publication: TrackPublication, didUpdateIsMuted isMuted: Bool) {
+        dbg(isMuted ? "trackMuted" : "trackUnmuted")
     }
 }

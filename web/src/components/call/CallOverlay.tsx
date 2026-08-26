@@ -134,6 +134,13 @@ export default function CallOverlay() {
 
   const timer = useCallTimer(activeCall?.status === 'active')
 
+  // Mute/camera toggles previously left no trace at all — only the
+  // answer/decline/hangUp buttons (in useWebRTC.ts) were logged.
+  const dbgCall = (stage: string) => {
+    if (!activeCall) return
+    void (activeCall.callerUserId === user?.uid ? writeCallerDebug : writeCalleeDebug)(activeCall.id, stage)
+  }
+
   // Handle CallKit answer/decline actions from the iOS lock screen.
   // If the call object is already in memory (incomingCall), act on it directly.
   // Otherwise — answered from CallKit while the app wasn't holding the call — load it
@@ -310,6 +317,58 @@ export default function CallOverlay() {
     }
   }, [remoteStream])
 
+  // Answers "did real audio actually arrive", not just "did the SFU report a
+  // successful subscription" — the exact gap that caused the CallKit
+  // fulfill-order bug (trackSubscribed fired while the local engine was
+  // still silent). Samples the remote track's waveform for a few seconds
+  // after it appears and writes a one-time verdict to the same debug log.
+  // Only covers this device when it's running the JS/WebView audio path —
+  // CallKit- and Android-foreground-service-answered calls play audio
+  // entirely natively and never populate remoteStream here.
+  useEffect(() => {
+    if (!remoteStream) return
+    const call = activeCall
+    if (!call) return
+    const dbg = call.callerUserId === user?.uid ? writeCallerDebug : writeCalleeDebug
+
+    let cancelled = false
+    let ctx: AudioContext | null = null
+    const settleTimer = window.setTimeout(async () => {
+      try {
+        ctx = new AudioContext()
+        const source = ctx.createMediaStreamSource(remoteStream)
+        const analyser = ctx.createAnalyser()
+        analyser.fftSize = 512
+        source.connect(analyser)
+        const data = new Uint8Array(analyser.frequencyBinCount)
+        let peak = 0
+        const start = Date.now()
+        while (!cancelled && Date.now() - start < 3000) {
+          analyser.getByteTimeDomainData(data)
+          for (let i = 0; i < data.length; i++) {
+            const dev = Math.abs(data[i] - 128)
+            if (dev > peak) peak = dev
+          }
+          await new Promise((r) => setTimeout(r, 200))
+        }
+        if (!cancelled) {
+          const heard = peak > 4 // small margin above the analyser's own noise floor
+          void dbg(call.id, `remoteAudioLevel:${heard ? 'detected' : 'SILENCE'}(peak=${peak})`)
+        }
+      } catch (e) {
+        if (!cancelled) void dbg(call.id, 'remoteAudioLevel:error:' + String((e as Error)?.message ?? e).slice(0, 80))
+      } finally {
+        ctx?.close().catch(() => {})
+      }
+    }, 1500) // let the track stabilize before sampling
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(settleTimer)
+      ctx?.close().catch(() => {})
+    }
+  }, [remoteStream])
+
   // ── Incoming call screen ─────────────────────────────────────────────────
   if (incomingCall && !activeCall) {
     const callerName = incomingCall.callerAliasId || incomingCall.callerUserId
@@ -453,7 +512,7 @@ export default function CallOverlay() {
       >
         <div className="flex items-end justify-center gap-8">
           <div className="flex flex-col items-center gap-2">
-            <RoundBtn active={isMuted} onClick={(e) => { e.stopPropagation(); toggleMute(); revealControls() }} label={isMuted ? 'Unmute' : 'Mute'}>
+            <RoundBtn active={isMuted} onClick={(e) => { e.stopPropagation(); dbgCall('button:' + (isMuted ? 'unmute' : 'mute')); toggleMute(); revealControls() }} label={isMuted ? 'Unmute' : 'Mute'}>
               {isMuted ? <MicOffIcon /> : <MicIcon />}
             </RoundBtn>
             <span className="text-xs text-white/70">{isMuted ? 'Muted' : 'Microphone'}</span>
@@ -461,7 +520,7 @@ export default function CallOverlay() {
 
           {isVideo && (
             <div className="flex flex-col items-center gap-2">
-              <RoundBtn active={isVideoOff} onClick={(e) => { e.stopPropagation(); toggleVideo(); revealControls() }} label={isVideoOff ? 'Turn on camera' : 'Turn off camera'}>
+              <RoundBtn active={isVideoOff} onClick={(e) => { e.stopPropagation(); dbgCall('button:' + (isVideoOff ? 'cameraOn' : 'cameraOff')); toggleVideo(); revealControls() }} label={isVideoOff ? 'Turn on camera' : 'Turn off camera'}>
                 {isVideoOff ? <VideoOffIcon /> : <VideoIcon />}
               </RoundBtn>
               <span className="text-xs text-white/70">{isVideoOff ? 'Camera Off' : 'Camera'}</span>

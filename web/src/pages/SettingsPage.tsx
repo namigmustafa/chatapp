@@ -6,8 +6,10 @@ import { useThemeStore } from '@/store/themeStore'
 import { signOut } from '@/services/auth'
 import AliasManager from '@/components/alias/AliasManager'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
-import { getMyRecentCalls } from '@/services/webrtc'
+import { getMyRecentCalls, cleanupCall } from '@/services/webrtc'
 import type { CallDiagnosticRecord } from '@/services/webrtc'
+import { getOrCreateConversation } from '@/services/conversations'
+import { sendMessage } from '@/services/messages'
 
 type Section = 'aliases' | 'account' | 'notifications' | 'appearance'
 
@@ -204,15 +206,50 @@ function CallDiagnostics() {
   )
 }
 
-function formatRecord(r: CallDiagnosticRecord): string {
+// The full call id is caller-uid_callee-uid_timestamp — unreadable at a
+// glance when several logs are pasted together. The trailing timestamp is
+// already unique per call, so its last 5 digits make a short, comparable tag.
+function shortCallCode(id: string): string {
+  const last = id.split('_').pop() ?? id
+  return '#' + last.slice(-5)
+}
+
+// Merges every source into ONE chronological timeline instead of three
+// separate blobs you had to mentally interleave by hand. callerDebugLog and
+// calleeDebugLog entries carry a real "timestamp:stage" prefix so they sort
+// exactly; calleeDebugNative is a single " | "-joined string with NO
+// per-stage timestamp (the native dbg() helpers never captured one) — those
+// stages are real and in true order, just not time-aligned with the rest, so
+// they're listed separately rather than faked into the timeline.
+function unifiedTimeline(r: CallDiagnosticRecord): string {
+  type Entry = { t: number; label: string }
+  const parseTimestamped = (log: string[] | undefined, source: string): Entry[] =>
+    (log ?? []).map((line) => {
+      const i = line.indexOf(':')
+      const t = Number(line.slice(0, i))
+      const stage = line.slice(i + 1)
+      return { t: Number.isFinite(t) ? t : 0, label: `[${source}] ${stage}` }
+    })
+
+  const merged = [
+    ...parseTimestamped(r.callerDebugLog, 'caller'),
+    ...parseTimestamped(r.calleeDebugLog, 'callee-js'),
+  ].sort((a, b) => a.t - b.t)
+
   const lines = [
-    `call ${r.id}`,
+    `call ${shortCallCode(r.id)} (${r.id})`,
     `role: ${r.isCaller ? 'caller' : 'callee'} · type: ${r.type} · status: ${r.status}`,
     `time: ${new Date(r.createdAt).toLocaleString()}`,
-    `caller log: ${r.callerDebugLog?.join(' | ') || '(none)'}`,
-    `callee log (JS): ${r.calleeDebugLog?.join(' | ') || '(none)'}`,
-    `callee log (native): ${r.calleeDebugNative || '(none)'}`,
+    '',
+    merged.length
+      ? merged.map((e) => `  ${new Date(e.t).toLocaleTimeString()}  ${e.label}`).join('\n')
+      : '  (no timestamped events)',
   ]
+
+  if (r.calleeDebugNative) {
+    lines.push('', '[callee-native] (in order, no per-step timestamp):', '  ' + r.calleeDebugNative.split(' | ').join('\n  '))
+  }
+
   return lines.join('\n')
 }
 
@@ -222,6 +259,11 @@ function RecentCallsLog() {
   const [error, setError] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [sentId, setSentId] = useState<string | null>(null)
+  const [sendErrorId, setSendErrorId] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [sendingAll, setSendingAll] = useState(false)
+  const [sendAllResult, setSendAllResult] = useState<string | null>(null)
 
   const load = () => {
     if (!user) return
@@ -236,20 +278,85 @@ function RecentCallsLog() {
 
   const copy = async (r: CallDiagnosticRecord) => {
     try {
-      await navigator.clipboard.writeText(formatRecord(r))
+      await navigator.clipboard.writeText(unifiedTimeline(r))
       setCopiedId(r.id)
       setTimeout(() => setCopiedId((cur) => (cur === r.id ? null : cur)), 2000)
     } catch { /* clipboard unavailable — no-op */ }
   }
 
+  // Sends the log straight into the conversation with the other party in
+  // that call — avoids manual copy/paste between two phones just to compare
+  // notes on a failed test call.
+  const sendToChat = async (r: CallDiagnosticRecord) => {
+    if (!user || !r.otherUserId) return
+    setBusyId(r.id)
+    setSendErrorId(null)
+    try {
+      const convId = await getOrCreateConversation(user.uid, r.myAliasId, r.otherUserId, r.otherAliasId)
+      await sendMessage(convId, user.uid, '📋 Call diagnostics:\n' + unifiedTimeline(r))
+      setSentId(r.id)
+      setTimeout(() => setSentId((cur) => (cur === r.id ? null : cur)), 2000)
+    } catch (e) {
+      setSendErrorId(r.id)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  // One button to push every visible call's log out at once, instead of
+  // expanding and sending each of N calls by hand — each goes to the
+  // conversation with that specific call's other party (calls in this list
+  // can be with different people, so this fans out per-recipient rather than
+  // needing one shared destination).
+  const sendAllToChat = async () => {
+    if (!user || !calls?.length) return
+    setSendingAll(true)
+    setSendAllResult(null)
+    let sent = 0
+    let skipped = 0
+    for (const r of calls) {
+      if (!r.otherUserId) { skipped++; continue }
+      try {
+        const convId = await getOrCreateConversation(user.uid, r.myAliasId, r.otherUserId, r.otherAliasId)
+        await sendMessage(convId, user.uid, '📋 Call diagnostics:\n' + unifiedTimeline(r))
+        sent++
+      } catch {
+        skipped++
+      }
+    }
+    setSendAllResult(`Sent ${sent}${skipped ? `, skipped ${skipped}` : ''}`)
+    setSendingAll(false)
+  }
+
+  const remove = async (r: CallDiagnosticRecord) => {
+    setBusyId(r.id)
+    try {
+      await cleanupCall(r.id)
+      setCalls((cur) => cur?.filter((c) => c.id !== r.id) ?? null)
+    } catch { /* leave it in the list — refresh will retry the read */ } finally {
+      setBusyId(null)
+    }
+  }
+
   return (
     <div className="bg-zinc-200/60 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700 rounded-2xl overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3.5">
-        <div>
+      <div className="flex items-center justify-between px-4 py-3.5 gap-2">
+        <div className="min-w-0">
           <p className="text-sm text-zinc-900 dark:text-white">Recent call logs</p>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Your last calls, straight from Firestore — tap to expand, copy to share</p>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">One unified timeline per call — tap to expand, send or copy to share</p>
         </div>
-        <button onClick={load} className="text-xs text-indigo-500 dark:text-indigo-400 font-medium px-2 py-1">Refresh</button>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {!!calls?.length && (
+            <button
+              onClick={sendAllToChat}
+              disabled={sendingAll}
+              className="text-xs text-indigo-500 dark:text-indigo-400 font-medium px-2 py-1 disabled:opacity-40"
+            >
+              {sendingAll ? 'Sending…' : sendAllResult ?? 'Send all'}
+            </button>
+          )}
+          <button onClick={load} className="text-xs text-indigo-500 dark:text-indigo-400 font-medium px-2 py-1">Refresh</button>
+        </div>
       </div>
       <div className="divide-y divide-zinc-300/50 dark:divide-zinc-700/50">
         {error && <p className="px-4 pb-3 text-xs text-red-400">{error}</p>}
@@ -265,7 +372,7 @@ function RecentCallsLog() {
               >
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-zinc-900 dark:text-white truncate">
-                    {r.isCaller ? 'You called' : 'Called you'} · {r.otherAliasId || '?'} · {r.status}
+                    {shortCallCode(r.id)} · {r.isCaller ? 'You called' : 'Called you'} · {r.otherAliasId || '?'} · {r.status}
                   </p>
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">{new Date(r.createdAt).toLocaleString()}</p>
                 </div>
@@ -274,14 +381,32 @@ function RecentCallsLog() {
               {expanded && (
                 <div className="px-4 pb-3 flex flex-col gap-2">
                   <pre className="text-[10px] leading-relaxed whitespace-pre-wrap break-all bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-2.5 text-zinc-700 dark:text-zinc-300">
-                    {formatRecord(r)}
+                    {unifiedTimeline(r)}
                   </pre>
-                  <button
-                    onClick={() => copy(r)}
-                    className="self-start text-xs font-medium text-indigo-500 dark:text-indigo-400 px-2 py-1"
-                  >
-                    {copiedId === r.id ? 'Copied ✓' : 'Copy to clipboard'}
-                  </button>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <button
+                      onClick={() => copy(r)}
+                      className="text-xs font-medium text-indigo-500 dark:text-indigo-400 px-0 py-1"
+                    >
+                      {copiedId === r.id ? 'Copied ✓' : 'Copy'}
+                    </button>
+                    {r.otherUserId && (
+                      <button
+                        onClick={() => sendToChat(r)}
+                        disabled={busyId === r.id}
+                        className="text-xs font-medium text-indigo-500 dark:text-indigo-400 px-0 py-1 disabled:opacity-40"
+                      >
+                        {sentId === r.id ? 'Sent ✓' : sendErrorId === r.id ? 'Send failed' : `Send to ${r.otherAliasId || 'chat'}`}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => remove(r)}
+                      disabled={busyId === r.id}
+                      className="text-xs font-medium text-red-500 dark:text-red-400 px-0 py-1 disabled:opacity-40"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
