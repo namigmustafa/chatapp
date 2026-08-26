@@ -7,6 +7,10 @@ on:
       - 'test-apps/livekit-callkit-test-ios/**'
       - '.github/workflows/callkit-test-ios.yml'
   workflow_dispatch:
+    inputs:
+      test_device_udid:
+        description: 'UDID of a new tester device to register (leave empty to skip)'
+        required: false
 
 jobs:
   build:
@@ -39,3 +43,69 @@ jobs:
             -scheme App \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO
+
+  distribute:
+    needs: build
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: test-apps/livekit-callkit-test-ios
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+          working-directory: test-apps/livekit-callkit-test-ios
+
+      - name: Setup App Store Connect API key
+        run: |
+          mkdir -p ~/.private_keys
+          echo "${{ secrets.ASC_PRIVATE_KEY }}" > ~/.private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+
+      - name: Select latest Xcode
+        run: |
+          LATEST=$(ls /Applications/ | grep '^Xcode_' | sort -t_ -k2 -V | tail -1)
+          sudo xcode-select -s "/Applications/$LATEST"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Decode distribution certificate
+        run: echo "${{ secrets.DIST_CERT_P12_BASE64 }}" | base64 --decode > distribution.p12
+
+      - name: Build & sign (ad-hoc)
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          DIST_CERT_PASSWORD: ${{ secrets.DIST_CERT_PASSWORD }}
+          TEST_DEVICE_UDID: ${{ github.event.inputs.test_device_udid }}
+        run: bundle exec fastlane adhoc
+
+      - name: Setup Node.js (for firebase-tools)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Distribute via Firebase App Distribution
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          IPA=$(find . -maxdepth 1 -name "*.ipa" | head -1)
+          echo "Distributing $IPA"
+          npx -y firebase-tools appdistribution:distribute "$IPA" \
+            --app 1:656202089228:ios:41b36481da9ef970e23f29 \
+            --project chatapp-48786 \
+            --testers "namigmustafa@gmail.com" \
+            --release-notes "CallKit + LiveKit isolation test build (commit ${{ github.sha }})"

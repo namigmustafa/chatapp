@@ -23,6 +23,9 @@ targets:
           - "project.yml"
           - "*.entitlements"
           - "README.md"
+          - "fastlane/**"
+          - "Gemfile"
+          - "Gemfile.lock"
     info:
       path: Info.plist
       properties:

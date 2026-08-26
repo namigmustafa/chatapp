@@ -1,0 +1,84 @@
+default_platform(:ios)
+
+platform :ios do
+  lane :adhoc do
+    keychain_name = "build.keychain"
+    keychain_password = "ci_temp_password"
+
+    create_keychain(
+      name: keychain_name,
+      password: keychain_password,
+      default_keychain: true,
+      unlock: true,
+      timeout: 3600,
+      add_to_search_list: true,
+    )
+
+    import_certificate(
+      certificate_path: "distribution.p12",
+      certificate_password: ENV["DIST_CERT_PASSWORD"],
+      keychain_path: File.expand_path("~/Library/Keychains/#{keychain_name}-db"),
+      keychain_password: keychain_password,
+    )
+
+    api_key = app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_content: ENV["ASC_PRIVATE_KEY"],
+    )
+
+    # Registers the bundle ID at the Developer Portal level only (skip_itc:
+    # true skips creating an actual App Store Connect app listing — we don't
+    # need one, distribution is via Firebase App Distribution, not TestFlight).
+    # Safe to call every run: no-ops if the identifier already exists.
+    produce(
+      api_key: api_key,
+      app_identifier: "app.chatapp.p2p.calltest",
+      app_name: "ChatApp CallKit Test",
+      skip_itc: true,
+      skip_devcenter: false,
+      enable_services: { push_notification: "on" },
+    )
+
+    # Round 2+ only: once a tester's UDID is known (captured via Firebase App
+    # Distribution's own "register your device" flow on the phone), pass it
+    # in via the TEST_DEVICE_UDID secret and this registers it with Apple —
+    # no manual Developer Portal step needed on our end either.
+    if ENV["TEST_DEVICE_UDID"] && !ENV["TEST_DEVICE_UDID"].empty?
+      register_devices(
+        api_key: api_key,
+        devices: { "Tester device" => ENV["TEST_DEVICE_UDID"] },
+      )
+    end
+
+    get_provisioning_profile(
+      api_key: api_key,
+      app_identifier: "app.chatapp.p2p.calltest",
+      adhoc: true,
+      skip_certificate_verification: true,
+      force: true,
+      cert_id: "YB52DSFB37",
+    )
+
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: "CallKitTest.xcodeproj",
+      team_id: ENV["APPLE_TEAM_ID"],
+      bundle_identifier: "app.chatapp.p2p.calltest",
+      code_sign_identity: "Apple Distribution",
+      profile_name: lane_context[SharedValues::SIGH_NAME],
+    )
+
+    build_app(
+      project: "CallKitTest.xcodeproj",
+      scheme: "App",
+      export_method: "ad-hoc",
+      export_options: {
+        method: "ad-hoc",
+        provisioningProfiles: {
+          "app.chatapp.p2p.calltest" => lane_context[SharedValues::SIGH_NAME],
+        },
+      },
+    )
+  end
+end
