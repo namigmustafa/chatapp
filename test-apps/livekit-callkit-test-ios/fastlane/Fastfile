@@ -27,20 +27,11 @@ platform :ios do
       key_content: ENV["ASC_PRIVATE_KEY"],
     )
 
-    # Registers the bundle ID at the Developer Portal level only (skip_itc:
-    # true skips creating an actual App Store Connect app listing — we don't
-    # need one, distribution is via Firebase App Distribution, not TestFlight).
-    # Safe to call every run: no-ops if the identifier already exists.
-    # No api_key: param here — this fastlane version's `produce` doesn't accept
-    # one directly (confirmed via CI error listing valid options). It picks up
-    # the API key from the app_store_connect_api_key context set just above.
-    produce(
-      app_identifier: "app.chatapp.p2p.calltest",
-      app_name: "ChatApp CallKit Test",
-      skip_itc: true,
-      skip_devcenter: false,
-      enable_services: { push_notification: "on" },
-    )
+    # Bundle ID (app.chatapp.p2p.calltest) is registered manually at
+    # developer.apple.com/account/resources/identifiers/list, with Push
+    # Notifications enabled — `produce` can't do this here since it requires
+    # interactive Apple ID auth (username/password) in this fastlane version,
+    # which the App Store Connect API key doesn't substitute for.
 
     # Round 2+ only: once a tester's UDID is known (captured via Firebase App
     # Distribution's own "register your device" flow on the phone), pass it
