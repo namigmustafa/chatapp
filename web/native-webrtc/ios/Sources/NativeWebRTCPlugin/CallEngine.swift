@@ -112,6 +112,7 @@ public final class CallEngine: NSObject {
     public func answerCall(callId: String) async throws {
         self.callId = callId
         self.debugLog = []
+        dbg("platform:ios")
         dbg("button:answer")
         dbg("start")
 

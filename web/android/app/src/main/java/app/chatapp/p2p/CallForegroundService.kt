@@ -166,6 +166,7 @@ class CallForegroundService : Service() {
 
     private fun answer(id: String) {
         debugLog.clear()
+        dbg("platform:android")
         dbg("button:answer")
         scope.launch {
             val idToken = idToken()
