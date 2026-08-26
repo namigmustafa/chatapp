@@ -134,29 +134,6 @@ export const getLiveKitToken = onRequest(
   }
 )
 
-// TEMPORARY diagnostic endpoint — remove after debugging the LiveKit
-// migration's caller-side connection issue. No auth check since this is
-// short-lived and only exposes non-sensitive debug breadcrumbs.
-export const debugRecentCalls = onRequest(async (req, res) => {
-  const snap = await db.collection('calls').orderBy('createdAt', 'desc').limit(15).get()
-  res.json(snap.docs.map((d) => {
-    const c = d.data()
-    return {
-      id: d.id,
-      status: c.status,
-      type: c.type,
-      callerUserId: c.callerUserId,
-      calleeUserId: c.calleeUserId,
-      callerDebug: c.callerDebug ?? null,
-      calleeDebug: c.calleeDebug ?? null,
-      calleeDebugNative: c.calleeDebugNative ?? null,
-      callerDebugLog: c.callerDebugLog ?? null,
-      calleeDebugLog: c.calleeDebugLog ?? null,
-      createdAt: c.createdAt?.toDate?.() ?? c.createdAt ?? null,
-    }
-  }))
-})
-
 async function sendVoIPPush(
   voipToken: string,
   payload: Record<string, string>,
@@ -262,6 +239,43 @@ export const onCallCreated = onDocumentCreated(
           sent: res.sent.length,
           failed: res.failed.map((f) => ({ status: f.status, reason: f.response?.reason })),
         })
+
+        // Delivery-tracking retry, WhatsApp/Telegram-style: those apps stay on a
+        // persistent connection to their own servers and track pending call
+        // delivery, resending if a push didn't land — we don't have that
+        // infrastructure, but we can approximate the same effect cheaply. This
+        // is specifically for the well-documented (but never definitively
+        // fixed by Apple) case where the FIRST VoIP push after a device has
+        // been idle for a long time is unreliably processed while later ones
+        // work fine.
+        //
+        // Deliberately waits almost the full 30s ring window (see missedCall
+        // timeout in useWebRTC.ts's startCall) rather than a short delay —
+        // resending after only a few seconds would fire on every ordinary
+        // slow-to-answer call too (people routinely take >5s to pick up a
+        // ringing phone), risking a confusing second CXProvider report
+        // (maximumCallsPerCallGroup=1 means it'd likely just be rejected by
+        // CallKit, but that's untested and not worth the risk for the common
+        // case). Waiting until the call was about to be marked missed anyway
+        // means this only ever fires when there was nothing left to lose.
+        await new Promise((resolve) => setTimeout(resolve, 22_000))
+        const freshSnap = await db.doc(`calls/${callId}`).get()
+        if (freshSnap.exists && freshSnap.data()?.status === 'ringing') {
+          console.log('[VoIP] still ringing 5s after first push — resending as delivery-retry mitigation', { callId })
+          try {
+            const retryRes = await sendVoIPPush(
+              voipToken,
+              { callId, callType: call.type, callerName, callerUserId: call.callerUserId },
+              pk, ki, ti
+            )
+            console.log('[VoIP] retry apns response', {
+              sent: retryRes.sent.length,
+              failed: retryRes.failed.map((f) => ({ status: f.status, reason: f.response?.reason })),
+            })
+          } catch (err) {
+            console.error('[VoIP] retry send threw:', err)
+          }
+        }
       } catch (err) {
         console.error('[VoIP] send threw:', err)
       }
