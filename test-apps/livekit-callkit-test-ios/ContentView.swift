@@ -22,8 +22,11 @@ struct ContentView: View {
     @ObservedObject var callManager = CallManager.shared
     @ObservedObject var room: Room = CallManager.shared.room
 
-    @AppStorage("url") var url: String = ""
-    @AppStorage("token") var token: String = ""
+    // Hardcoded defaults for our fixed "calltest" room / tester1 identity —
+    // this device is always the iOS side, so there's no reason to make the
+    // tester paste these in by hand every time.
+    @AppStorage("url") var url: String = "wss://20-16-170-193.sslip.io"
+    @AppStorage("token") var token: String = "eyJhbGciOiJIUzI1NiJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6ImNhbGx0ZXN0IiwiY2FuUHVibGlzaCI6dHJ1ZSwiY2FuU3Vic2NyaWJlIjp0cnVlfSwiaXNzIjoiQVBJa2V5LWJyYXZlLWZyb2ciLCJleHAiOjE3OTAzNzM0MDgsIm5iZiI6MTc4Nzc4MTQwOCwic3ViIjoidGVzdGVyMSJ9.EDLWZZdwTpHzr7CHz3RARyzLEddvgisFBIssUynZE88"
 
     @State var showTokenCopiedToast: Bool = false
 

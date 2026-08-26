@@ -26,6 +26,9 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val DEFAULT_URL = "wss://20-16-170-193.sslip.io"
+        // This device is always the Android side (tester2) of the fixed
+        // "calltest" room — hardcoded so there's nothing to paste in by hand.
+        const val DEFAULT_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6ImNhbGx0ZXN0IiwiY2FuUHVibGlzaCI6dHJ1ZSwiY2FuU3Vic2NyaWJlIjp0cnVlfSwiaXNzIjoiQVBJa2V5LWJyYXZlLWZyb2ciLCJleHAiOjE3OTAzNzM0MDgsIm5iZiI6MTc4Nzc4MTQwOCwic3ViIjoidGVzdGVyMiJ9.y7pHlkTxQBDb58j0l92gMu4464rlVGC0gHwKftb8ekw"
     }
 
     private lateinit var statusText: TextView
@@ -53,6 +56,7 @@ class MainActivity : AppCompatActivity() {
 
         val tokenInput = EditText(this).apply {
             hint = "Token"
+            setText(DEFAULT_TOKEN)
         }
 
         statusText = TextView(this).apply {
