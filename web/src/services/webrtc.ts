@@ -8,6 +8,7 @@ import {
   serverTimestamp,
   query,
   where,
+  arrayUnion,
 } from 'firebase/firestore'
 import type { Unsubscribe } from 'firebase/firestore'
 import { auth, db } from './firebase'
@@ -119,17 +120,20 @@ export const cleanupCall = async (callId: string) => {
 }
 
 // Diagnostic: record how far the callee's answer flow got, readable in the
-// Firestore console (calls/{id}.calleeDebug). Best-effort, never throws.
+// Firestore console (calls/{id}.calleeDebugLog). Accumulates via arrayUnion —
+// a plain overwrite hid earlier stages behind whatever ran last (e.g. missed
+// whether the pre-answer effect ran at all before CallEngine's own writes).
+// Best-effort, never throws.
 export const writeCalleeDebug = async (callId: string, stage: string) => {
   try {
-    await updateDoc(doc(db, CALLS, callId), { calleeDebug: stage })
+    await updateDoc(doc(db, CALLS, callId), { calleeDebugLog: arrayUnion(`${Date.now()}:${stage}`) })
   } catch { /* ignore */ }
 }
 
-// Same, for the caller side (calls/{id}.callerDebug) — used to trace LiveKit
+// Same, for the caller side (calls/{id}.callerDebugLog) — used to trace LiveKit
 // connection state so a media failure is visible even without a live device console.
 export const writeCallerDebug = async (callId: string, stage: string) => {
   try {
-    await updateDoc(doc(db, CALLS, callId), { callerDebug: stage })
+    await updateDoc(doc(db, CALLS, callId), { callerDebugLog: arrayUnion(`${Date.now()}:${stage}`) })
   } catch { /* ignore */ }
 }

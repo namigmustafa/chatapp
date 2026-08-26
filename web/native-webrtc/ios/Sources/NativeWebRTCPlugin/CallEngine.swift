@@ -69,26 +69,34 @@ public final class CallEngine: NSObject {
     }
 
     public func audioSessionDidActivate(_ audioSession: AVAudioSession) {
+        dbg("audioSessionDidActivate")
         try? AudioManager.shared.setEngineAvailability(.default)
     }
 
     public func audioSessionDidDeactivate(_ audioSession: AVAudioSession) {
+        dbg("audioSessionDidDeactivate")
         try? AudioManager.shared.setEngineAvailability(.none)
     }
 
-    // Separate field from the JS-side calleeDebug — otherwise CallOverlay's
-    // own writes (which run every time the app foregrounds, even just to
-    // sync UI state) overwrite whatever native last wrote, making it
-    // impossible to tell if the native answer flow actually ran/succeeded.
+    // Accumulated (not overwritten) so the FULL sequence for a call survives
+    // in one field — a single-field overwrite hid earlier stages (including
+    // whether audioSessionDidActivate ever fired) behind whatever ran last.
+    // Also a separate field from the JS-side calleeDebug — CallOverlay's own
+    // writes run every time the app foregrounds and would otherwise stomp
+    // whatever native wrote.
+    private var debugLog: [String] = []
     private func dbg(_ stage: String) {
         guard let callId else { return }
-        Task { try? await FirestoreClient.updateDocument(path: "calls/\(callId)", fields: ["calleeDebugNative": "native:\(stage)"]) }
+        debugLog.append(stage)
+        let joined = debugLog.joined(separator: " | ")
+        Task { try? await FirestoreClient.updateDocument(path: "calls/\(callId)", fields: ["calleeDebugNative": joined]) }
     }
 
     /// Entry point from CXAnswerCallAction. Joins the call's LiveKit room and
     /// publishes the mic — all native, no WebView involvement.
     public func answerCall(callId: String) {
         self.callId = callId
+        self.debugLog = []
         dbg("start")
 
         Task {

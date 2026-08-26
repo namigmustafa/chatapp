@@ -100,13 +100,18 @@ class CallForegroundService : Service() {
         return if (token.isNullOrEmpty()) null else token
     }
 
-    // Separate field from the JS-side calleeDebug — otherwise CallOverlay's
-    // own writes overwrite whatever native last wrote here.
+    // Accumulated (not overwritten) — a plain overwrite hid earlier stages
+    // behind whatever ran last. Also a separate field from the JS-side
+    // calleeDebug — CallOverlay's own writes run every time the app
+    // foregrounds and would otherwise stomp whatever native wrote.
+    private val debugLog = mutableListOf<String>()
     private fun dbg(stage: String) {
         val id = callId ?: return
         val token = idToken() ?: return
+        debugLog.add(stage)
+        val joined = debugLog.joinToString(" | ")
         scope.launch {
-            try { FirestoreClient.updateDocument("calls/$id", mapOf("calleeDebugNative" to "native:$stage"), token) } catch (_: Exception) {}
+            try { FirestoreClient.updateDocument("calls/$id", mapOf("calleeDebugNative" to joined), token) } catch (_: Exception) {}
         }
     }
 
@@ -124,6 +129,7 @@ class CallForegroundService : Service() {
     }
 
     private fun answer(id: String) {
+        debugLog.clear()
         scope.launch {
             val idToken = idToken()
             if (idToken == null) {
