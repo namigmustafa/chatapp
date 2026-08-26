@@ -16,6 +16,7 @@
 
 import LiveKit
 
+import AVFAudio
 import AVFoundation
 import Combine
 import Logging
@@ -122,11 +123,23 @@ class CallManager: NSObject, ObservableObject {
     // connects to the LiveKit room directly. `CXStartCallAction` (above)
     // requires an Apple entitlement we don't have and don't actually need
     // for this. This mirrors the real caller path instead.
+    enum DirectCallError: Error { case microphonePermissionDenied }
+
     func startCallDirect() async {
         Task { @MainActor in
             callState = .activeOutgoing
         }
         do {
+            // Request mic permission BEFORE touching engine availability.
+            // Calling setEngineAvailability(.default) while permission is
+            // still .notDetermined blocks the calling thread until the
+            // system permission dialog is dismissed (confirmed via
+            // livekit/client-sdk-swift#815) — on the main actor that reads
+            // as an unresponsive app and iOS's watchdog kills it, which is
+            // exactly the "connected, then closed fast" crash we saw.
+            let granted = await AVAudioApplication.requestRecordPermission()
+            guard granted else { throw DirectCallError.microphonePermissionDenied }
+
             // The `init()` above leaves LiveKit's audio engine disabled
             // (`.none`) and only re-enables it inside `provider(_:didActivate:)`,
             // which is a CXProviderDelegate callback — it never fires for a
