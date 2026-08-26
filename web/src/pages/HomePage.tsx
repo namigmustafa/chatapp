@@ -154,12 +154,12 @@ export default function HomePage() {
   const sidebarActiveConvId = mobileShowChat ? (activeConv?.id ?? null) : null
 
   return (
-    <div className="flex h-[100dvh] w-full bg-zinc-950 overflow-hidden">
+    <div className="flex h-[100dvh] w-full bg-white dark:bg-zinc-950 overflow-hidden">
       <div
         className={`
           ${showSidebar ? 'flex' : 'hidden'} md:flex
           w-full md:w-96 flex-shrink-0
-          bg-zinc-900 border-r border-zinc-800 flex-col
+          bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex-col
         `}
       >
         <Sidebar

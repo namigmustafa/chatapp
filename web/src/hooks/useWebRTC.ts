@@ -103,6 +103,21 @@ export const useWebRTC = () => {
         return
       }
 
+      // Show the call screen IMMEDIATELY — previously this waited until the
+      // entire LiveKit connect handshake (token fetch + WS/ICE + mic init)
+      // finished, leaving the caller staring at nothing for 3-4s after
+      // tapping the call button with zero feedback that anything happened.
+      setActiveCall({
+        id: callId,
+        callerUserId: user.uid,
+        callerAliasId,
+        calleeAliasId,
+        calleeUserId,
+        type,
+        status: 'ringing',
+        createdAt: Date.now(),
+      })
+
       const dbg = (stage: string) => { void writeCallerDebug(callId, stage) }
 
       // 30-second ring timeout — mark as missed if no answer
@@ -117,17 +132,6 @@ export const useWebRTC = () => {
         setRoom(room)
         wireRemoteAudio(room, dbg)
         dbg('caller:connected')
-
-        setActiveCall({
-          id: callId,
-          callerUserId: user.uid,
-          callerAliasId,
-          calleeAliasId,
-          calleeUserId,
-          type,
-          status: 'ringing',
-          createdAt: Date.now(),
-        })
 
         const unsubCall = subscribeCall(callId, (call) => {
           if (!call) return

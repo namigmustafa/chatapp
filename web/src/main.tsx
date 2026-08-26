@@ -2,16 +2,18 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Capacitor } from '@capacitor/core'
 import './index.css'
+import './store/themeStore' // applies the persisted theme class before first paint
 import App from './App.tsx'
 
 async function setupNative() {
   if (!Capacitor.isNativePlatform()) return
 
-  const { StatusBar, Style } = await import('@capacitor/status-bar')
+  const { StatusBar } = await import('@capacitor/status-bar')
   const { Keyboard } = await import('@capacitor/keyboard')
 
   await StatusBar.setOverlaysWebView({ overlay: true })
-  await StatusBar.setStyle({ style: Style.Light })
+  // Initial style is set by themeStore's applyTheme() (imported above) based
+  // on the persisted theme, not hardcoded here.
 
   // Keyboard pushes content up instead of overlaying it
   Keyboard.setAccessoryBarVisible({ isVisible: false })

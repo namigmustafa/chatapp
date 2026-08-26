@@ -2,6 +2,7 @@ import type { Message } from '@/types'
 import { format } from 'date-fns'
 import { enUS } from 'date-fns/locale'
 import { useFileStore } from '@/store/fileStore'
+import { useThemeStore } from '@/store/themeStore'
 
 interface Props {
   message: Message
@@ -26,9 +27,6 @@ const callLabels: Record<string, string> = {
   call_ended: 'Call ended',
   call_rejected: 'Call declined',
 }
-
-const OWN_BG = '#1d3461'
-const OTHER_BG = '#1e2d38'
 
 function toDate(val: unknown): Date | null {
   if (!val) return null
@@ -71,6 +69,14 @@ function formatSize(bytes: number): string {
 
 export default function MessageBubble({ message, isOwn }: Props) {
   const blobUrl = useFileStore((s) => s.blobUrls[message.id])
+  const theme = useThemeStore((s) => s.theme)
+  // Own bubble is always white-on-blue in both themes. The "other" bubble is
+  // a near-white surface in light mode (needs dark text) but stays dark in
+  // dark mode (needs white text) — so only its text color has to flip.
+  const otherIsLight = theme === 'light'
+  const textClass = isOwn || !otherIsLight ? 'text-white' : 'text-zinc-900'
+  const subTextClass = isOwn || !otherIsLight ? 'text-zinc-300' : 'text-zinc-600'
+  const timeClass = isOwn || !otherIsLight ? 'text-white/50' : 'text-zinc-500'
   const isCallEvent =
     message.type === 'call_missed' ||
     message.type === 'call_ended' ||
@@ -82,14 +88,14 @@ export default function MessageBubble({ message, isOwn }: Props) {
   if (isCallEvent) {
     return (
       <div className="flex justify-center my-1">
-        <span className="text-[11px] text-zinc-400 bg-zinc-800/80 px-3 py-1 rounded-full">
+        <span className="text-[11px] text-zinc-500 bg-zinc-200/80 dark:text-zinc-400 dark:bg-zinc-800/80 px-3 py-1 rounded-full">
           {callLabels[message.type] ?? message.type} · {time}
         </span>
       </div>
     )
   }
 
-  const bg = isOwn ? OWN_BG : OTHER_BG
+  const bg = isOwn ? 'var(--msg-own-bg)' : 'var(--msg-other-bg)'
   // 0px on the tail corner — flush connection with ::after triangle, no gap
   const radius = isOwn ? '12px 12px 0px 12px' : '12px 12px 12px 0px'
   const tailClass = isOwn ? 'msg-tail-own' : 'msg-tail-other'
@@ -123,34 +129,34 @@ export default function MessageBubble({ message, isOwn }: Props) {
                   download={message.fileName}
                   className="flex items-center gap-3 px-3 py-3 hover:opacity-80 transition-opacity"
                 >
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 text-zinc-300">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={`flex-shrink-0 ${subTextClass}`}>
                     <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
                     <polyline points="14 2 14 8 20 8"/>
                   </svg>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{message.fileName}</p>
-                    <p className="text-xs text-zinc-400 mt-0.5">{message.fileSize ? formatSize(message.fileSize) : ''}</p>
+                    <p className={`text-sm font-medium truncate ${textClass}`}>{message.fileName}</p>
+                    <p className={`text-xs mt-0.5 ${subTextClass}`}>{message.fileSize ? formatSize(message.fileSize) : ''}</p>
                   </div>
                 </a>
               ) : (
                 <div className="flex items-center gap-3 px-3 py-3 opacity-50">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 text-zinc-300">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={`flex-shrink-0 ${subTextClass}`}>
                     <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
                     <polyline points="14 2 14 8 20 8"/>
                   </svg>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{message.fileName}</p>
-                    <p className="text-xs text-zinc-400">Waiting for transfer...</p>
+                    <p className={`text-sm font-medium truncate ${textClass}`}>{message.fileName}</p>
+                    <p className={`text-xs ${subTextClass}`}>Waiting for transfer...</p>
                   </div>
                 </div>
               )
             )}
             {!fileUrl && message.type !== 'document' && (
-              <div className="px-3 py-4 text-xs text-zinc-400 text-center">Waiting for transfer...</div>
+              <div className={`px-3 py-4 text-xs text-center ${subTextClass}`}>Waiting for transfer...</div>
             )}
           </div>
           <div className="flex items-center justify-end gap-1 px-2.5 pb-1.5 pt-0.5">
-            <span className="text-[10px] text-white/50">{time}</span>
+            <span className={`text-[10px] ${timeClass}`}>{time}</span>
             {isOwn && <StatusIcon status={message.status} />}
           </div>
         </div>
@@ -167,7 +173,7 @@ export default function MessageBubble({ message, isOwn }: Props) {
         <div className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'} gap-0.5`}>
           <span className={`${sizeClass} leading-none select-none`}>{message.content}</span>
           <div className="flex items-center gap-1">
-            <span className="text-[10px] text-white/40 whitespace-nowrap">{time}</span>
+            <span className="text-[10px] text-zinc-400 dark:text-white/40 whitespace-nowrap">{time}</span>
             {isOwn && <StatusIcon status={message.status} />}
           </div>
         </div>
@@ -179,7 +185,7 @@ export default function MessageBubble({ message, isOwn }: Props) {
   return (
     <div className={rowClass}>
       <div
-        className={`${tailClass} max-w-[72%] px-3 pt-2 pb-1.5 text-sm text-white `}
+        className={`${tailClass} max-w-[72%] px-3 pt-2 pb-1.5 text-sm ${textClass}`}
         style={{ backgroundColor: bg, borderRadius: radius }}
       >
         {/* Invisible trailing spacer prevents last word overlapping the timestamp */}
@@ -188,7 +194,7 @@ export default function MessageBubble({ message, isOwn }: Props) {
           <span className="inline-block w-16 select-none" aria-hidden />
         </p>
         <div className="flex items-center justify-end gap-1 -mt-1">
-          <span className="text-[10px] text-white/50 whitespace-nowrap">{time}</span>
+          <span className={`text-[10px] whitespace-nowrap ${timeClass}`}>{time}</span>
           {isOwn && <StatusIcon status={message.status} />}
         </div>
       </div>

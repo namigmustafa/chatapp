@@ -15,7 +15,7 @@ function StatusBadge({ alias, callerUid }: { alias: Alias; callerUid: string }) 
   const status = getAliasStatus(alias, callerUid)
   if (status.reachable) return null
   if (status.reason === 'inactive') {
-    return <span className="text-[11px] text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded-full">Inactive</span>
+    return <span className="text-[11px] text-zinc-500 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-full">Inactive</span>
   }
   if (status.reason === 'blocked') {
     return <span className="text-[11px] text-red-400 bg-red-950/40 px-2 py-0.5 rounded-full">Blocked</span>
@@ -86,11 +86,11 @@ export default function NewChatModal({ myAliasId, onConversationReady, onClose }
       className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start sm:items-center justify-center z-50 p-4 pt-20 sm:pt-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-sm shadow-2xl flex flex-col gap-0 overflow-hidden">
+      <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-2xl w-full max-w-sm shadow-2xl flex flex-col gap-0 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-zinc-800">
-          <h3 className="font-semibold text-white text-sm">New Chat</h3>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 p-1 rounded-lg hover:bg-zinc-800 transition-colors">
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-zinc-200 dark:border-zinc-800">
+          <h3 className="font-semibold text-zinc-900 dark:text-white text-sm">New Chat</h3>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 p-1 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
@@ -109,7 +109,7 @@ export default function NewChatModal({ myAliasId, onConversationReady, onClose }
               value={query}
               onChange={(e) => handleSearch(e.target.value)}
               placeholder="Search alias... (e.g. nam)"
-              className="w-full bg-zinc-800 rounded-full pl-9 pr-4 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none border-none"
+              className="w-full bg-zinc-100 dark:bg-zinc-800 rounded-full pl-9 pr-4 py-2 text-sm text-zinc-900 dark:text-white placeholder-zinc-500 focus:outline-none border-none"
             />
           </div>
           {errorStatus && (
@@ -161,12 +161,12 @@ export default function NewChatModal({ myAliasId, onConversationReady, onClose }
                 key={alias.id + tick}
                 onClick={() => handleSelect(alias)}
                 className={`flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                  reachable ? 'hover:bg-zinc-800/70' : 'hover:bg-zinc-800/40 opacity-70'
+                  reachable ? 'hover:bg-zinc-200/70 dark:hover:bg-zinc-800/70' : 'hover:bg-zinc-200/40 dark:hover:bg-zinc-800/40 opacity-70'
                 }`}
               >
                 <AliasAvatar name={alias.name} isActive={alias.isActive} size="sm" />
                 <div className="flex-1 min-w-0">
-                  <p className="font-mono font-bold text-white text-sm tracking-wide">
+                  <p className="font-mono font-bold text-zinc-900 dark:text-white text-sm tracking-wide">
                     {alias.name.toUpperCase()}
                   </p>
                   {alias.description && (

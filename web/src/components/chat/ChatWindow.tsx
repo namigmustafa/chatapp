@@ -3,6 +3,7 @@ import { useSwipeBack } from '@/hooks/useSwipeBack'
 
 const EmojiPicker = lazy(() => import('@emoji-mart/react'))
 import { useAuthStore } from '@/store/authStore'
+import { useThemeStore } from '@/store/themeStore'
 import { sendMessage, subscribeMessages, markMessageRead } from '@/services/messages'
 import { setTyping, subscribeConversationTyping, markConversationRead } from '@/services/conversations'
 import { subscribePresence } from '@/services/presence'
@@ -33,10 +34,11 @@ export default function ChatWindow({
   onBack,
 }: Props) {
   const { user } = useAuthStore()
+  const theme = useThemeStore((s) => s.theme)
   const { startCall } = useWebRTC()
   const { activeCall, incomingCall } = useCallStore()
   const alreadyInACall = !!activeCall || !!incomingCall
-  useSwipeBack({ onBack: () => onBack?.(), enabled: !!onBack })
+  const swipeRef = useSwipeBack({ onBack: () => onBack?.(), enabled: !!onBack })
   const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState('')
   const [otherIsTyping, setOtherIsTyping] = useState(false)
@@ -130,14 +132,20 @@ export default function ChatWindow({
     sendMessage(conversationId, user.uid, content).catch(console.error)
   }
 
+  const dotColor = theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.035)'
+  const wallpaperStyle = {
+    backgroundColor: theme === 'dark' ? '#0b141a' : '#f6f6f7',
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Ccircle cx='40' cy='40' r='1.5' fill='${dotColor}'/%3E%3Ccircle cx='0' cy='0' r='1.5' fill='${dotColor}'/%3E%3Ccircle cx='80' cy='0' r='1.5' fill='${dotColor}'/%3E%3Ccircle cx='0' cy='80' r='1.5' fill='${dotColor}'/%3E%3Ccircle cx='80' cy='80' r='1.5' fill='${dotColor}'/%3E%3C/svg%3E")`,
+  }
+
   return (
-    <div className="relative flex flex-col h-full overflow-hidden">
+    <div ref={swipeRef} className="relative flex flex-col h-full overflow-hidden bg-white dark:bg-zinc-950">
       {/* ── Header ── */}
-      <div className="flex items-center gap-3 px-3 border-b border-zinc-800 bg-zinc-900 flex-shrink-0" style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top))', paddingBottom: '0.625rem' }}>
+      <div className="flex items-center gap-3 px-3 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 flex-shrink-0" style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top))', paddingBottom: '0.625rem' }}>
         {onBack && (
           <button
             onClick={onBack}
-            className="md:hidden text-zinc-400 hover:text-white p-1.5 -ml-1 rounded-full hover:bg-zinc-800 transition-colors flex-shrink-0"
+            className="md:hidden text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-1.5 -ml-1 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors active:scale-90 duration-150 flex-shrink-0"
           >
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
               <path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -148,21 +156,21 @@ export default function ChatWindow({
         <div className="relative flex-shrink-0">
           <AliasAvatar name={otherAliasId} size="sm" />
           <span
-            className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-zinc-900 transition-colors ${
-              otherIsOnline ? 'bg-emerald-400' : 'bg-zinc-600'
+            className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-zinc-900 transition-colors ${
+              otherIsOnline ? 'bg-emerald-400' : 'bg-zinc-300 dark:bg-zinc-600'
             }`}
           />
         </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="font-mono font-semibold text-white text-sm truncate">
+            <span className="font-mono font-semibold text-zinc-900 dark:text-white text-sm truncate">
               {myAliasId.toUpperCase()}
             </span>
             <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="text-zinc-600 flex-shrink-0">
               <path d="M2 6h8M7 3l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            <span className="font-mono font-semibold text-white text-sm truncate">
+            <span className="font-mono font-semibold text-zinc-900 dark:text-white text-sm truncate">
               {otherAliasId.toUpperCase()}
             </span>
           </div>
@@ -186,7 +194,7 @@ export default function ChatWindow({
                 onClick={() => canCall && startCall(myAliasId, otherAliasId, otherUserId, 'audio', conversationId)}
                 title={alreadyInACall ? 'Already in a call' : canCall ? 'Audio call' : 'Alias is currently unreachable'}
                 disabled={!canCall}
-                className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="p-2 rounded-full text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.77a19.79 19.79 0 01-3.07-8.67A2 2 0 012 1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/>
@@ -196,7 +204,7 @@ export default function ChatWindow({
                 onClick={() => {}}
                 title="Video calls are temporarily disabled during the LiveKit migration (audio-only for now)"
                 disabled
-                className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="p-2 rounded-full text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polygon points="23 7 16 12 23 17 23 7"/>
@@ -214,8 +222,7 @@ export default function ChatWindow({
         style={{
           touchAction: 'pan-y',
           overscrollBehavior: 'contain',
-          backgroundColor: '#0b141a',
-          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Ccircle cx='40' cy='40' r='1.5' fill='rgba(255,255,255,0.03)'/%3E%3Ccircle cx='0' cy='0' r='1.5' fill='rgba(255,255,255,0.03)'/%3E%3Ccircle cx='80' cy='0' r='1.5' fill='rgba(255,255,255,0.03)'/%3E%3Ccircle cx='0' cy='80' r='1.5' fill='rgba(255,255,255,0.03)'/%3E%3Ccircle cx='80' cy='80' r='1.5' fill='rgba(255,255,255,0.03)'/%3E%3C/svg%3E")`,
+          ...wallpaperStyle,
         }}
       >
         {messages.map((msg) => (
@@ -249,7 +256,7 @@ export default function ChatWindow({
 
       {/* ── Reachability warning bubble ── */}
       {aliasStatus && !aliasStatus.reachable && (
-        <div className="flex justify-center px-4 pt-3 pb-2 flex-shrink-0" style={{ backgroundColor: '#0b141a' }}>
+        <div className="flex justify-center px-4 pt-3 pb-2 flex-shrink-0" style={{ backgroundColor: wallpaperStyle.backgroundColor }}>
           <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-amber-900/50 border border-amber-700/30 w-full max-w-sm">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 text-amber-400">
               <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
@@ -285,14 +292,14 @@ export default function ChatWindow({
 
       <form
         onSubmit={(e) => { setShowEmoji(false); handleSend(e) }}
-        className="flex items-center gap-1.5 px-3 py-2.5 border-t border-zinc-800 bg-zinc-900 flex-shrink-0"
+        className="flex items-center gap-1.5 px-3 py-2.5 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 flex-shrink-0"
         style={{ paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom))' }}
       >
         <button
           type="button"
           onClick={() => setShowEmoji((v) => !v)}
           title="Emoji"
-          className={`flex-shrink-0 p-2 rounded-full transition-colors ${showEmoji ? 'text-indigo-400 bg-zinc-800' : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800'}`}
+          className={`flex-shrink-0 p-2 rounded-full transition-colors ${showEmoji ? 'text-indigo-400 bg-zinc-100 dark:bg-zinc-800' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10"/>
@@ -304,7 +311,7 @@ export default function ChatWindow({
 
         <input
           ref={inputRef}
-          className="flex-1 bg-zinc-800 rounded-full px-4 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none border-none min-w-0 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex-1 bg-zinc-100 dark:bg-zinc-800 rounded-full px-4 py-2 text-sm text-zinc-900 dark:text-white placeholder:text-zinc-500 focus:outline-none border-none min-w-0 disabled:opacity-40 disabled:cursor-not-allowed"
           placeholder={canMessage ? 'Type a message...' : 'This alias is currently unreachable'}
           value={text}
           disabled={!canMessage}
@@ -316,7 +323,7 @@ export default function ChatWindow({
           type="submit"
           disabled={!text.trim() || !canMessage}
           title="Send"
-          className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white transition-colors"
+          className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-200 dark:disabled:bg-zinc-700 disabled:text-zinc-500 text-white transition-colors"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"/>

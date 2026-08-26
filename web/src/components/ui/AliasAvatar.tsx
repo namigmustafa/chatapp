@@ -28,15 +28,15 @@ export default function AliasAvatar({ name, isActive, size = 'md' }: Props) {
   return (
     <div className="relative flex-shrink-0">
       <div
-        className={`${sizeClasses[size]} rounded-full flex items-center justify-center font-bold tracking-wider text-white select-none ring-2 ring-white/10`}
+        className={`${sizeClasses[size]} rounded-full flex items-center justify-center font-bold tracking-wider text-white select-none ring-2 ring-black/10 dark:ring-white/10`}
         style={{ backgroundColor: aliasColor(name) }}
       >
         {initials}
       </div>
       {isActive !== undefined && (
         <span
-          className={`absolute bottom-0 right-0 ${dotSize[size]} rounded-full border-2 border-zinc-900 transition-colors duration-300 ${
-            isActive ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]' : 'bg-zinc-600'
+          className={`absolute bottom-0 right-0 ${dotSize[size]} rounded-full border-2 border-white dark:border-zinc-900 transition-colors duration-300 ${
+            isActive ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]' : 'bg-zinc-300 dark:bg-zinc-600'
           }`}
         />
       )}

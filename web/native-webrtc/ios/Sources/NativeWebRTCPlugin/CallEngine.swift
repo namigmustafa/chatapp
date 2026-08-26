@@ -94,43 +94,57 @@ public final class CallEngine: NSObject {
 
     /// Entry point from CXAnswerCallAction. Joins the call's LiveKit room and
     /// publishes the mic — all native, no WebView involvement.
-    public func answerCall(callId: String) {
+    ///
+    /// IMPORTANT (confirmed via livekit/client-sdk-swift#181 and the official
+    /// livekit-examples/swift-example-collection CallKit example): this must
+    /// run to completion, and `action.fulfill()` must be called only AFTER it
+    /// returns — not immediately. Fulfilling early lets CallKit activate the
+    /// audio session (didActivate → AVAudioEngine goes live) concurrently
+    /// with/independently of room.connect()+setMicrophone(), with no ordering
+    /// guarantee between them. When the SFU-level publish/subscribe completes
+    /// before the local audio engine is actually live, the LiveKit/WebRTC
+    /// signaling layer reports success (trackSubscribed fires on both ends —
+    /// exactly what we saw in production debug logs) while no real audio ever
+    /// gets captured from the not-yet-running engine. The official example
+    /// avoids this entirely by doing room connect + mic publish INSIDE the
+    /// CXAnswerCallAction handler's async Task and only calling
+    /// action.fulfill()/action.fail() once that finishes.
+    public func answerCall(callId: String) async throws {
         self.callId = callId
         self.debugLog = []
         dbg("start")
 
-        Task {
-            do {
-                guard let call = try await FirestoreClient.getDocument(path: "calls/\(callId)") else {
-                    dbg("error:callDocMissing")
-                    return
-                }
-                guard let status = call["status"] as? String, status == "ringing" else {
-                    dbg("error:notAnswerable(status=\(call["status"] ?? "nil"))")
-                    return
-                }
-                dbg("gotCallDoc")
-
-                let token = try await Self.fetchLiveKitToken(callId: callId)
-                dbg("gotToken")
-
-                let room = Room()
-                room.add(delegate: self)
-                self.room = room
-
-                try await room.connect(url: Self.livekitURL, token: token)
-                dbg("roomConnected")
-
-                try await room.localParticipant.setMicrophone(enabled: true)
-                dbg("micPublished")
-
-                try await FirestoreClient.updateDocument(path: "calls/\(callId)", fields: ["status": "active"])
-                dbg("answerWritten")
-            } catch {
-                dbg("error:\(String(describing: error).prefix(120))")
-                await FirestoreClient.tryUpdateCalleeError(callId: callId)
-                endCall()
+        do {
+            guard let call = try await FirestoreClient.getDocument(path: "calls/\(callId)") else {
+                dbg("error:callDocMissing")
+                throw ClientGenericError.unknown
             }
+            guard let status = call["status"] as? String, status == "ringing" else {
+                dbg("error:notAnswerable(status=\(call["status"] ?? "nil"))")
+                throw ClientGenericError.unknown
+            }
+            dbg("gotCallDoc")
+
+            let token = try await Self.fetchLiveKitToken(callId: callId)
+            dbg("gotToken")
+
+            let room = Room()
+            room.add(delegate: self)
+            self.room = room
+
+            try await room.connect(url: Self.livekitURL, token: token)
+            dbg("roomConnected")
+
+            try await room.localParticipant.setMicrophone(enabled: true)
+            dbg("micPublished")
+
+            try await FirestoreClient.updateDocument(path: "calls/\(callId)", fields: ["status": "active"])
+            dbg("answerWritten")
+        } catch {
+            dbg("error:\(String(describing: error).prefix(120))")
+            await FirestoreClient.tryUpdateCalleeError(callId: callId)
+            endCall()
+            throw error
         }
     }
 
@@ -169,12 +183,16 @@ extension CallEngine: RoomDelegate {
     public func room(_ room: Room, participant: RemoteParticipant, didSubscribeTrack publication: RemoteTrackPublication) {
         // No manual audio wiring needed — LiveKit's AudioManager plays subscribed
         // audio tracks through the engine we enabled in audioSessionDidActivate.
-        // Belt-and-suspenders: CXProvider's didActivate (which flips the engine to
-        // .default) is a separate async callback from this Task-driven answer flow
-        // with no ordering guarantee between them. If a track subscribes before
-        // didActivate has fired, re-asserting .default here costs nothing if it's
-        // already set, and rules out that race as the "no audio" cause.
-        try? AudioManager.shared.setEngineAvailability(.default)
+        //
+        // Deliberately NOT re-calling setEngineAvailability(.default) here anymore
+        // (an earlier "belt and suspenders" addition, now confirmed unnecessary
+        // since the fulfill-order race it guarded against was fixed separately) —
+        // debug logs showed audioSessionDidActivate reliably firing well before
+        // this point in every recent test, and re-toggling engine availability
+        // at the exact moment a track is being subscribed/attached is a plausible
+        // way to disrupt that track's just-established playback path, which would
+        // explain one-way-audio reports where the SFU-level subscription
+        // (confirmed via this very breadcrumb) succeeded but no sound came out.
         dbg("subscribedTrack")
     }
 

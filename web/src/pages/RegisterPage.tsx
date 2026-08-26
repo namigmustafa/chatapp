@@ -62,9 +62,9 @@ export default function RegisterPage() {
       </form>
 
       <div className="flex items-center gap-3 mt-4">
-        <div className="flex-1 h-px bg-zinc-700" />
+        <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-700" />
         <span className="text-xs text-zinc-500">or</span>
-        <div className="flex-1 h-px bg-zinc-700" />
+        <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-700" />
       </div>
 
       <Button type="button" variant="secondary" className="w-full mt-4" onClick={handleGoogle} disabled={loading}>
@@ -86,7 +86,7 @@ export default function RegisterPage() {
 
   return (
     <div
-      className="w-full flex-1 flex flex-col bg-zinc-950 md:items-center md:justify-center"
+      className="w-full flex-1 flex flex-col bg-white dark:bg-zinc-950 md:items-center md:justify-center"
       style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       {/* ── Mobile: hero header ── */}
@@ -96,21 +96,21 @@ export default function RegisterPage() {
             <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
           </svg>
         </div>
-        <h1 className="text-3xl font-bold text-white tracking-tight">Chatapp</h1>
-        <p className="text-zinc-400 mt-2 text-sm text-center">Private. Anonymous. Encrypted.</p>
+        <h1 className="text-3xl font-bold text-zinc-900 dark:text-white tracking-tight">Chatapp</h1>
+        <p className="text-zinc-500 dark:text-zinc-400 mt-2 text-sm text-center">Private. Anonymous. Encrypted.</p>
       </div>
 
       {/* ── Mobile: form (no card) ── */}
       <div className="md:hidden w-full px-6 pb-10 flex-1 overflow-y-auto">
-        <h2 className="text-xl font-semibold text-white mb-1">Sign Up</h2>
+        <h2 className="text-xl font-semibold text-zinc-900 dark:text-white mb-1">Sign Up</h2>
         <p className="text-zinc-500 text-sm mb-6">Create a new account</p>
         {formContent}
       </div>
 
       {/* ── Desktop: centered card ── */}
-      <div className="hidden md:block w-full max-w-sm p-8 bg-zinc-900 rounded-2xl border border-zinc-800">
-        <h1 className="text-2xl font-semibold text-white mb-1">Sign Up</h1>
-        <p className="text-zinc-400 text-sm mb-6">Create a new account</p>
+      <div className="hidden md:block w-full max-w-sm p-8 bg-zinc-50 dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800">
+        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-white mb-1">Sign Up</h1>
+        <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-6">Create a new account</p>
         {formContent}
       </div>
     </div>

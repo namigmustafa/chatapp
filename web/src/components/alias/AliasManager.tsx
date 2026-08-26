@@ -13,14 +13,14 @@ import CreateAliasModal from './CreateAliasModal'
 function EmptyState({ onOpen }: { onOpen: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
-      <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center">
+      <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-zinc-500">
           <circle cx="12" cy="8" r="4"/>
           <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
         </svg>
       </div>
       <div>
-        <p className="text-white font-medium">No aliases yet</p>
+        <p className="text-zinc-900 dark:text-white font-medium">No aliases yet</p>
         <p className="text-zinc-500 text-sm mt-1">Create your first alias and be reachable anonymously.</p>
       </div>
       <button
@@ -82,15 +82,15 @@ export default function AliasManager() {
         {/* Header */}
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-white">My Aliases</h2>
-            <p className="text-sm text-zinc-400 mt-0.5">
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">My Aliases</h2>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
               An identity independent of your email or phone number.
             </p>
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
             {aliases.length > 0 && (
               <div className="text-right">
-                <span className="text-2xl font-bold text-white">{activeCount}</span>
+                <span className="text-2xl font-bold text-zinc-900 dark:text-white">{activeCount}</span>
                 <p className="text-xs text-zinc-500 -mt-0.5">active</p>
               </div>
             )}

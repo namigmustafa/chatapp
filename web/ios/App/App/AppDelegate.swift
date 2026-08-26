@@ -119,16 +119,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         update.supportsGrouping = false
         update.supportsUngrouping = false
 
-        // Known CallKit gap (confirmed on Apple's developer forums): when the app
-        // answers from a locked/killed state, `provider(_:didActivate:)` can simply
-        // never fire — leaving the audio session/engine stuck in the `.none`
-        // (disabled) state we set at launch, with zero audio despite a fully
-        // successful WebRTC/LiveKit connection. Apple's own workaround is to
-        // "pre-heat" the audio session category/mode right here, before even
-        // reporting the call, instead of waiting for didActivate to do it. If
-        // didActivate DOES fire later, its own (redundant) configuration is harmless.
+        // Confirmed via livekit/client-sdk-swift#181 (maintainer hiroshihorie) and
+        // LiveKit's own official CallKit example — they hit the exact same "no
+        // mic" issue and found the session category must be set here, before
+        // reportNewIncomingCall, even though category/engine setup conceptually
+        // belongs in didActivate. Their example only sets the CATEGORY here, not
+        // AudioManager engine availability — the engine itself is brought up later,
+        // gated on the room/mic actually being ready (see answerCall's doc comment).
         try? AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
-        CallEngine.shared.audioSessionDidActivate(AVAudioSession.sharedInstance())
 
         callProvider?.reportNewIncomingCall(with: callUUID, update: update) { error in
             if let error = error {
@@ -170,32 +168,30 @@ class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, C
         // so JS can tell native-side timing apart from its own getUserMedia/WebRTC hang.
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "voip_answer_action_at")
         UserDefaults.standard.set(UIApplication.shared.applicationState.rawValue, forKey: "voip_answer_action_app_state")
-        // Belt-and-suspenders alongside the pre-heat in didReceiveIncomingPushWith:
-        // some reports of this same didActivate-never-fires bug specifically call
-        // out re-asserting the category here, in the answer action itself, as
-        // part of the fix — cheap and idempotent if it's already set.
-        try? AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
-        CallEngine.shared.audioSessionDidActivate(AVAudioSession.sharedInstance())
-        // Full setup (setActive(true), etc.) still happens in didActivate below
-        // when/if CallKit does call it — this is just insurance for when it doesn't.
-        //
-        // Kick off the ENTIRE call natively (offer fetch, answer, ICE, audio) —
-        // no dependency on the WebView/JS layer at all. This runs in parallel with
-        // CallKit's own audio session activation below; the peer connection and
-        // signaling don't need an active audio session to start negotiating.
-        //
-        // IMPORTANT: this must happen BEFORE action.fulfill() — fulfilling the
-        // action is what triggers CallKit to activate the audio session, and
-        // didActivate can fire fast enough to race CallEngine.answerCall()'s own
-        // `self.callId = callId` assignment if it runs after. When that race was
-        // lost, CallEngine silently dropped the didActivate signal (callId still
-        // nil), which looked identical to CallKit never activating audio at all.
-        if let callId = activeCallId, !callId.isEmpty {
-            CallEngine.shared.answerCall(callId: callId)
-        }
 
-        action.fulfill()
-        DispatchQueue.main.async { self.wakeWebView() }
+        // Confirmed via livekit/client-sdk-swift#181 (the exact "CallKit answer
+        // → no audio" bug) and LiveKit's own official CallKit example: connect to
+        // the room and publish the mic FIRST, and only call action.fulfill() once
+        // that finishes — not before. Fulfilling early lets CallKit activate the
+        // audio session (didActivate) independently of/concurrently with the room
+        // connect, with no ordering guarantee; the SFU-level publish can complete
+        // and report success (trackSubscribed fires on both ends) before the local
+        // AVAudioEngine is actually live, so the signaling layer looks entirely
+        // healthy while no real audio is ever captured. See CallEngine.answerCall's
+        // doc comment for the full citation trail.
+        guard let callId = activeCallId, !callId.isEmpty else {
+            action.fail()
+            return
+        }
+        Task {
+            do {
+                try await CallEngine.shared.answerCall(callId: callId)
+                action.fulfill()
+                DispatchQueue.main.async { self.wakeWebView() }
+            } catch {
+                action.fail()
+            }
+        }
     }
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {

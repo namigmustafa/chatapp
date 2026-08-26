@@ -18,7 +18,7 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: () =>
       aria-checked={checked}
       onClick={onChange}
       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none ${
-        checked ? 'bg-emerald-500' : 'bg-zinc-600'
+        checked ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-600'
       }`}
     >
       <span
@@ -64,8 +64,8 @@ export default function AliasCard({ alias, onToggleActive, onDelete, onScheduleU
   return (
     <div className={`rounded-2xl border transition-all duration-200 overflow-hidden ${
       alias.isActive
-        ? 'bg-zinc-800/70 border-zinc-700'
-        : 'bg-zinc-900/50 border-zinc-800 opacity-60'
+        ? 'bg-zinc-200/70 dark:bg-zinc-800/70 border-zinc-300 dark:border-zinc-700'
+        : 'bg-zinc-100/50 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800 opacity-60'
     }`}>
       {/* Main row */}
       <div className="flex items-center gap-4 p-4">
@@ -73,14 +73,14 @@ export default function AliasCard({ alias, onToggleActive, onDelete, onScheduleU
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono font-bold text-white text-lg tracking-wide leading-tight">
+            <span className="font-mono font-bold text-zinc-900 dark:text-white text-lg tracking-wide leading-tight">
               {alias.name.toUpperCase()}
             </span>
             <span className="text-zinc-500 text-sm font-mono">@{alias.name}</span>
           </div>
 
           {alias.description && (
-            <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{alias.description}</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 line-clamp-2">{alias.description}</p>
           )}
 
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
@@ -91,7 +91,7 @@ export default function AliasCard({ alias, onToggleActive, onDelete, onScheduleU
               </span>
             )}
             {alias.blockedUsers.length > 0 && (
-              <span className="text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded-full">
+              <span className="text-xs text-zinc-500 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-full">
                 {alias.blockedUsers.length} blocked
               </span>
             )}
@@ -106,7 +106,7 @@ export default function AliasCard({ alias, onToggleActive, onDelete, onScheduleU
             className={`p-2 rounded-lg transition-colors ${
               showSchedule
                 ? 'bg-indigo-600 text-white'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700'
+                : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700'
             }`}
             title="Schedule"
           >

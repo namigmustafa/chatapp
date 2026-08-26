@@ -94,11 +94,11 @@ export default function Sidebar({ activeConvId, conversations, onSelectConversat
     .toUpperCase()
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-zinc-900">
+    <div className="flex-1 flex flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-900">
 
       {/* ── Header ── */}
       <div
-        className="px-4 py-3 flex items-center gap-3 border-b border-zinc-800/60 flex-shrink-0"
+        className="px-4 py-3 flex items-center gap-3 border-b border-zinc-200/60 dark:border-zinc-800/60 flex-shrink-0"
         style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
       >
         <button
@@ -110,14 +110,14 @@ export default function Sidebar({ activeConvId, conversations, onSelectConversat
             : initials}
         </button>
 
-        <span className="flex-1 text-white font-semibold text-[15px] select-none">Chatapp</span>
+        <span className="flex-1 text-zinc-900 dark:text-white font-semibold text-[15px] select-none">Chatapp</span>
 
         <div className="flex items-center gap-0.5">
           <button
             onClick={() => setShowNewChat(true)}
             disabled={!primaryAlias}
             title="New chat"
-            className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-30"
+            className="p-2 rounded-full text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-30"
           >
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
@@ -128,7 +128,7 @@ export default function Sidebar({ activeConvId, conversations, onSelectConversat
             <button
               onClick={() => setShowMenu((v) => !v)}
               title="Menu"
-              className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+              className="p-2 rounded-full text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
             >
               <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor">
                 <circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/>
@@ -136,10 +136,10 @@ export default function Sidebar({ activeConvId, conversations, onSelectConversat
             </button>
 
             {showMenu && (
-              <div className="absolute right-0 top-full mt-1 w-44 bg-zinc-800 border border-zinc-700/60 rounded-xl shadow-2xl z-50 overflow-hidden py-1">
+              <div className="absolute right-0 top-full mt-1 w-44 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300/60 dark:border-zinc-700/60 rounded-xl shadow-2xl z-50 overflow-hidden py-1">
                 <button
                   onClick={() => { navigate('/settings'); setShowMenu(false) }}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-200 hover:bg-zinc-700/60 transition-colors text-left"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-300/60 dark:hover:bg-zinc-700/60 transition-colors text-left"
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="3"/>
@@ -147,10 +147,10 @@ export default function Sidebar({ activeConvId, conversations, onSelectConversat
                   </svg>
                   Settings
                 </button>
-                <div className="mx-3 my-1 border-t border-zinc-700/50" />
+                <div className="mx-3 my-1 border-t border-zinc-300/50 dark:border-zinc-700/50" />
                 <button
                   onClick={async () => { setShowMenu(false); await signOut(user?.uid) }}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-zinc-700/60 transition-colors text-left"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-zinc-300/60 dark:hover:bg-zinc-700/60 transition-colors text-left"
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
@@ -179,7 +179,7 @@ export default function Sidebar({ activeConvId, conversations, onSelectConversat
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search or start new chat"
-            className="w-full bg-zinc-800 rounded-full pl-9 pr-4 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none border-none"
+            className="w-full bg-zinc-100 dark:bg-zinc-800 rounded-full pl-9 pr-4 py-2 text-sm text-zinc-900 dark:text-white placeholder-zinc-500 focus:outline-none border-none"
           />
         </div>
       </div>
@@ -226,21 +226,21 @@ export default function Sidebar({ activeConvId, conversations, onSelectConversat
               onClick={() => onSelectConversation(conv.id, otherUserId, otherAliasId, myAliasId)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 mx-2 mb-0.5 text-left transition-colors rounded-2xl ${
                 activeConvId === conv.id
-                  ? 'bg-[#2a3942]'
-                  : 'hover:bg-zinc-800/50'
+                  ? 'bg-indigo-100 dark:bg-[#2a3942]'
+                  : 'hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'
               }`}
               style={{ width: 'calc(100% - 1rem)' }}
             >
               <div className="relative flex-shrink-0">
                 <AliasAvatar name={otherAliasId} size="md" />
                 {onlineMap[otherUserId] && (
-                  <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-400 border-2 border-zinc-900" />
+                  <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-400 border-2 border-white dark:border-zinc-900" />
                 )}
               </div>
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <span className={`font-semibold text-[13px] truncate ${hasUnread ? 'text-white' : 'text-zinc-100'}`}>
+                  <span className={`font-semibold text-[13px] truncate ${hasUnread ? 'text-zinc-900 dark:text-white' : 'text-zinc-800 dark:text-zinc-100'}`}>
                     {otherAliasId.toUpperCase()}
                   </span>
                   {conv.lastMessage?.timestamp && (
@@ -256,7 +256,7 @@ export default function Sidebar({ activeConvId, conversations, onSelectConversat
                   )}
                 </div>
                 <div className="flex items-center justify-between gap-2 mt-0.5">
-                  <p className={`text-xs truncate ${hasUnread ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                  <p className={`text-xs truncate ${hasUnread ? 'text-zinc-600 dark:text-zinc-300' : 'text-zinc-500'}`}>
                     {conv.lastMessage
                       ? conv.lastMessage.type === 'text'
                         ? conv.lastMessage.content

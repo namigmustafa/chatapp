@@ -10,6 +10,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import io.livekit.android.LiveKit
+import io.livekit.android.events.RoomEvent
 import io.livekit.android.room.Room
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -151,6 +152,36 @@ class CallForegroundService : Service() {
 
                 val newRoom = LiveKit.create(applicationContext)
                 room = newRoom
+
+                // Diagnostic only — iOS's equivalent RoomDelegate.didSubscribeTrack
+                // breadcrumb was what proved the CallKit fulfill-order race was real
+                // in production. Android has no matching listener anywhere in this
+                // file, so we have zero visibility into whether the caller's track
+                // actually gets subscribed on this side. Wired before connect() so
+                // an event firing right as the connection completes isn't missed.
+                scope.launch {
+                    newRoom.events.events.collect { event ->
+                        when (event) {
+                            is RoomEvent.TrackSubscribed -> dbg("subscribedTrack:${event.track.kind}:from:${event.participant.identity}")
+                            is RoomEvent.TrackSubscriptionFailed -> dbg("subscribeFailed:${event.sid}:${event.exception.message?.take(80)}")
+                            is RoomEvent.ParticipantConnected -> dbg("participantConnected:${event.participant.identity}")
+                            is RoomEvent.Disconnected -> dbg("roomDisconnected")
+                            else -> {}
+                        }
+                    }
+                }
+
+                // LiveKit Android's default device priority is BluetoothHeadset,
+                // WiredHeadset, Speakerphone, Earpiece — Speakerphone ranks ABOVE
+                // Earpiece, so a plain voice call with no headset connected comes
+                // out the loud external speaker by default instead of the earpiece
+                // like a normal phone call. Put Earpiece ahead of Speakerphone.
+                (newRoom.audioHandler as? io.livekit.android.audio.AudioSwitchHandler)?.preferredDeviceList = listOf(
+                    com.twilio.audioswitch.AudioDevice.BluetoothHeadset::class.java,
+                    com.twilio.audioswitch.AudioDevice.WiredHeadset::class.java,
+                    com.twilio.audioswitch.AudioDevice.Earpiece::class.java,
+                    com.twilio.audioswitch.AudioDevice.Speakerphone::class.java
+                )
                 newRoom.connect(LIVEKIT_URL, lkToken)
                 dbg("roomConnected")
 
