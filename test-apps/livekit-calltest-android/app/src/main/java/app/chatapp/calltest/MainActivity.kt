@@ -14,6 +14,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 // Minimal, isolated LiveKit test harness — no Firestore, no Capacitor, no
 // signaling of any kind. "Start call" connects directly. "Simulate incoming
@@ -113,6 +115,10 @@ class MainActivity : AppCompatActivity() {
             .forEach { root.addView(it) }
 
         setContentView(root)
+
+        lifecycleScope.launch {
+            CallStatus.state.collect { statusText.text = it }
+        }
     }
 
     private fun ensureCallChannel() {

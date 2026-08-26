@@ -61,6 +61,7 @@ class CallTestService : Service() {
     }
 
     private fun connect(url: String, token: String) {
+        CallStatus.update("Connecting...")
         scope.launch {
             try {
                 val newRoom = LiveKit.create(applicationContext)
@@ -69,11 +70,26 @@ class CallTestService : Service() {
                 scope.launch {
                     newRoom.events.events.collect { event ->
                         when (event) {
-                            is RoomEvent.Connected -> Log.i(TAG, "connected")
-                            is RoomEvent.Disconnected -> Log.i(TAG, "disconnected: ${event.reason}")
-                            is RoomEvent.ParticipantConnected -> Log.i(TAG, "participantConnected: ${event.participant.identity}")
-                            is RoomEvent.ParticipantDisconnected -> Log.i(TAG, "participantDisconnected: ${event.participant.identity}")
-                            is RoomEvent.TrackSubscribed -> Log.i(TAG, "subscribedTrack: ${event.track.kind} from ${event.participant.identity}")
+                            is RoomEvent.Connected -> {
+                                Log.i(TAG, "connected")
+                                CallStatus.update("Connected to room")
+                            }
+                            is RoomEvent.Disconnected -> {
+                                Log.i(TAG, "disconnected: ${event.reason}")
+                                CallStatus.update("Disconnected: ${event.reason}")
+                            }
+                            is RoomEvent.ParticipantConnected -> {
+                                Log.i(TAG, "participantConnected: ${event.participant.identity}")
+                                CallStatus.update("Participant connected: ${event.participant.identity}")
+                            }
+                            is RoomEvent.ParticipantDisconnected -> {
+                                Log.i(TAG, "participantDisconnected: ${event.participant.identity}")
+                                CallStatus.update("Participant disconnected: ${event.participant.identity}")
+                            }
+                            is RoomEvent.TrackSubscribed -> {
+                                Log.i(TAG, "subscribedTrack: ${event.track.kind} from ${event.participant.identity}")
+                                CallStatus.update("Subscribed to ${event.track.kind} from ${event.participant.identity}")
+                            }
                             else -> {}
                         }
                     }
@@ -81,11 +97,14 @@ class CallTestService : Service() {
 
                 newRoom.connect(url, token)
                 Log.i(TAG, "roomConnected")
+                CallStatus.update("Room connected, publishing mic...")
 
                 newRoom.localParticipant.setMicrophoneEnabled(true)
                 Log.i(TAG, "micPublished")
+                CallStatus.update("Mic published — call live")
             } catch (e: Exception) {
                 Log.e(TAG, "connect failed: ${e.message}", e)
+                CallStatus.update("Connect failed: ${e.message}")
                 stopSelfSafely()
             }
         }
@@ -94,6 +113,7 @@ class CallTestService : Service() {
     private fun stopSelfSafely() {
         room?.disconnect()
         room = null
+        CallStatus.update("Idle")
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
