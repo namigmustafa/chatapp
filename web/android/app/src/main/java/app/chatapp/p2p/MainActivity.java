@@ -42,7 +42,25 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        setForeground(true);
         notifyCallAction();
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        setForeground(false);
+    }
+
+    // AppFirebaseMessagingService used ActivityManager.getRunningAppProcesses()
+    // importance to guess foreground state, which is unreliable — a real
+    // incoming call arrived while the app WAS in the foreground and still got
+    // the full-screen Answer/Decline notification, which then fought with our
+    // own in-app UI over who handles the tap. A flag driven directly by this
+    // Activity's own lifecycle is the ground truth instead of a guess.
+    private void setForeground(boolean isForeground) {
+        getSharedPreferences("chatapp_call", MODE_PRIVATE)
+            .edit().putBoolean("is_foreground", isForeground).apply();
     }
 
     // When CallActivity opens the app (already running or freshly launched), forward

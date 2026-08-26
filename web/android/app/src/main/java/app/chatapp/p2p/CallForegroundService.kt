@@ -12,7 +12,6 @@ import android.os.IBinder
 import io.livekit.android.LiveKit
 import io.livekit.android.events.RoomEvent
 import io.livekit.android.room.Room
-import io.livekit.android.room.track.Track
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -120,51 +119,6 @@ class CallForegroundService : Service() {
         }
     }
 
-    // Samples real WebRTC stats for a few seconds after a remote audio track
-    // is subscribed and writes a one-time verdict. Scans every stats entry's
-    // members for anything named like "audioLevel"/"totalAudioEnergy" rather
-    // than hardcoding one stats-object type, since the exact WebRTC stats
-    // schema (inbound-rtp vs track-level) has shifted across spec revisions
-    // and libwebrtc versions — resilience here matters more than precision.
-    // Two independent windows instead of one: a single narrow sample right
-    // after subscribing can read as silent just because nobody happened to
-    // be talking in that exact moment — indistinguishable from a real
-    // one-way-audio bug. iOS hit exactly this ambiguity in production (an
-    // early single sample read as near-zero for a call that ran a minute+).
-    // audioLevel (0..1 normalized) and totalAudioEnergy (unitless, accumulates
-    // over time) are tracked separately and thresholded separately — mixing
-    // them into one "peak" would let a large energy accumulation mask a
-    // genuinely silent audioLevel, or vice versa.
-    private suspend fun sampleRemoteAudioLevel(track: Track) {
-        for ((label, initialDelay) in listOf("3s" to 1500L, "15s" to 12000L)) {
-            delay(initialDelay)
-            var peakLevel = 0.0
-            var peakEnergy = 0.0
-            var samples = 0
-            val start = System.currentTimeMillis()
-            while (System.currentTimeMillis() - start < 3000) {
-                try {
-                    val report = track.getRTCStats()
-                    report?.statsMap?.values?.forEach { stat ->
-                        stat.members.forEach { (key, value) ->
-                            val v = (value as? Number)?.toDouble() ?: return@forEach
-                            if (key.equals("audioLevel", ignoreCase = true)) {
-                                if (v > peakLevel) peakLevel = v
-                                samples++
-                            } else if (key.equals("totalAudioEnergy", ignoreCase = true)) {
-                                if (v > peakEnergy) peakEnergy = v
-                                samples++
-                            }
-                        }
-                    }
-                } catch (_: Exception) {}
-                delay(300)
-            }
-            val heard = peakLevel > 0.01 || peakEnergy > 0.001
-            dbg("remoteAudioLevel@$label:${if (heard) "detected" else "SILENCE"}(level=$peakLevel,energy=$peakEnergy,samples=$samples)")
-        }
-    }
-
     private fun fetchLiveKitToken(id: String, idToken: String): String {
         val url = URL("$TOKEN_ENDPOINT?callId=$id")
         val conn = url.openConnection() as HttpURLConnection
@@ -224,15 +178,16 @@ class CallForegroundService : Service() {
                             is RoomEvent.TrackPublished -> dbg("trackPublished:${event.publication.kind}:from:${event.participant.identity}")
                             is RoomEvent.TrackSubscribed -> {
                                 dbg("subscribedTrack:${event.track.kind}:from:${event.participant.identity}")
-                                if (event.track.kind == Track.Kind.AUDIO) {
-                                    // Subscribing is only a SIGNALING-level success — it does
-                                    // NOT mean audio is actually flowing (this exact gap was
-                                    // the root cause of the iOS CallKit one-way-audio bug:
-                                    // trackSubscribed fired while the local engine was still
-                                    // silent). Sample real WebRTC stats to get a MEDIA-level
-                                    // verdict instead of trusting the signaling event alone.
-                                    scope.launch { sampleRemoteAudioLevel(event.track) }
-                                }
+                                // The equivalent WebRTC-stats sampling on iOS (CallEngine.swift)
+                                // was confirmed in production to deadlock the whole call right
+                                // at this exact point — every call stalled forever immediately
+                                // after this breadcrumb whenever that code ran, never reaching
+                                // micPublished/answerWritten. Removed here too pre-emptively:
+                                // not confirmed broken on Android, but the same track.getRTCStats()
+                                // call pattern carries the same risk of contending with the
+                                // Room/Track's internal state right as it's negotiating a
+                                // subscription, and diagnostics must never be able to break a
+                                // real call.
                             }
                             is RoomEvent.TrackUnsubscribed -> dbg("unsubscribedTrack:${event.track.kind}:from:${event.participant.identity}")
                             is RoomEvent.TrackSubscriptionFailed -> dbg("subscribeFailed:${event.sid}:${event.exception.message?.take(80)}")

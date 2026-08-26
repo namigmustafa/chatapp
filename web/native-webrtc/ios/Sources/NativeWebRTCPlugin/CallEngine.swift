@@ -224,37 +224,15 @@ extension CallEngine: RoomDelegate {
         // (confirmed via this very breadcrumb) succeeded but no sound came out.
         dbg("subscribedTrack")
 
-        // "subscribedTrack" above is only a SIGNALING-level success — it does
-        // NOT mean audio is actually flowing (this exact gap was the root
-        // cause of the CallKit fulfill-order bug this file already fixes).
-        // Sample real WebRTC inbound-rtp stats (audioLevel/totalAudioEnergy,
-        // confirmed fields on InboundRtpStreamStatistics in the SDK source)
-        // to get a MEDIA-level verdict instead of trusting signaling alone.
-        if publication.kind == .audio, let track = publication.track {
-            Task {
-                await track.set(reportStatistics: true)
-                // Two independent samples instead of one: a single narrow
-                // window right after subscribing can read as silent just
-                // because nobody happened to be talking in that exact
-                // moment, which looks identical to a real one-way-audio bug
-                // (confirmed the hard way — first version's single early
-                // sample read ~0.00003, indistinguishable from true silence,
-                // for a call that ran over a minute).
-                for delayNs: UInt64 in [3_000_000_000, 15_000_000_000] {
-                    try? await Task.sleep(nanoseconds: delayNs)
-                    let stream = track.statistics?.inboundRtpStream.first
-                    let level = stream?.audioLevel ?? -1
-                    let energy = stream?.totalAudioEnergy ?? -1
-                    // level is normalized 0...1; totalAudioEnergy accumulates
-                    // over time and was confirmed ~1e-9–1e-10 for genuine
-                    // silence in production — thresholds here are well above
-                    // both those noise floors, not "greater than zero".
-                    let heard = level > 0.01 || energy > 0.001
-                    dbg("remoteAudioLevel@\(delayNs / 1_000_000_000)s:\(heard ? "detected" : "SILENCE")(level=\(level),energy=\(energy))")
-                }
-                await track.set(reportStatistics: false)
-            }
-        }
+        // REMOVED the WebRTC-stats audio-level sampling that used to run here
+        // (track.set(reportStatistics: true) + polling track.statistics). Real
+        // production evidence showed calls consistently stalling forever right
+        // after this exact breadcrumb — micPublished/answerWritten never ran —
+        // whenever that sampling Task was present. It very likely contends
+        // with LiveKit's internal Room/Track actor at exactly the moment the
+        // SFU is negotiating the subscription, deadlocking the whole call.
+        // Diagnostics must never be able to break the actual call, so this is
+        // gone until it can be reimplemented in a way proven not to block.
     }
 
     public func room(_ room: Room, didUpdateConnectionState connectionState: ConnectionState, from oldValue: ConnectionState) {

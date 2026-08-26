@@ -1,10 +1,8 @@
 package app.chatapp.p2p;
 
-import android.app.ActivityManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
-import android.content.Context;
 import android.content.Intent;
 import android.media.AudioAttributes;
 import android.media.RingtoneManager;
@@ -13,7 +11,6 @@ import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
 import com.google.firebase.messaging.RemoteMessage;
 import io.capawesome.capacitorjs.plugins.firebase.messaging.MessagingService;
-import java.util.List;
 import java.util.Map;
 
 // Extends the Capacitor Firebase MessagingService so token refresh + foreground
@@ -107,17 +104,12 @@ public class AppFirebaseMessagingService extends MessagingService {
         if (nm != null) nm.notify(CALL_NOTIFICATION_ID, builder.build());
     }
 
+    // Ground truth from MainActivity's own onResume/onPause, not a guess from
+    // ActivityManager process-importance — that heuristic let a real call push
+    // through the full-screen Answer/Decline notification while the app was
+    // genuinely in the foreground, fighting with the in-app incoming-call UI.
     private boolean isAppInForeground() {
-        ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
-        if (am == null) return false;
-        List<ActivityManager.RunningAppProcessInfo> processes = am.getRunningAppProcesses();
-        if (processes == null) return false;
-        for (ActivityManager.RunningAppProcessInfo p : processes) {
-            if (p.processName.equals(getPackageName()) &&
-                p.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) {
-                return true;
-            }
-        }
-        return false;
+        return getSharedPreferences("chatapp_call", MODE_PRIVATE)
+            .getBoolean("is_foreground", false);
     }
 }
