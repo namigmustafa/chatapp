@@ -29,7 +29,9 @@ jobs:
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug
 
       - name: Setup Node.js (for firebase-tools)
         uses: actions/setup-node@v4
