@@ -14,12 +14,15 @@
  * limitations under the License.
  */
 
+import FirebaseCore
+import FirebaseCrashlytics
 import LiveKit
 import SwiftUI
 
 @main
 struct CallKitExampleApp: App {
     init() {
+        FirebaseApp.configure()
         LiveKitSDK.setLogLevel(.debug)
         _ = CallManager.shared
     }
