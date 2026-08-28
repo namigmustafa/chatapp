@@ -140,6 +140,17 @@ class CallManager: NSObject, ObservableObject {
             let granted = await AVAudioApplication.requestRecordPermission()
             guard granted else { throw DirectCallError.microphonePermissionDenied }
 
+            // `provider(_:didActivate:)` below both configures the session
+            // category AND enables the engine — CallKit itself activates the
+            // session before that callback fires. Skipping CallKit entirely
+            // means neither happens, so do both ourselves here: activating
+            // the engine on a session still stuck on its default (non-
+            // recording-capable) category is exactly the kind of native-level
+            // audio failure that a Swift do/catch can't catch, which is why
+            // this crashed outright instead of surfacing a normal error.
+            try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .voiceChat, options: [.mixWithOthers])
+            try AVAudioSession.sharedInstance().setActive(true)
+
             // The `init()` above leaves LiveKit's audio engine disabled
             // (`.none`) and only re-enables it inside `provider(_:didActivate:)`,
             // which is a CXProviderDelegate callback — it never fires for a
@@ -184,6 +195,7 @@ class CallManager: NSObject, ObservableObject {
     func endCallDirect() async {
         await room.disconnect()
         try? AudioManager.shared.setEngineAvailability(.none)
+        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
         Task { @MainActor in
             callState = .idle
         }
