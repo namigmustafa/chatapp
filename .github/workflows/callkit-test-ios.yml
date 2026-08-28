@@ -78,6 +78,14 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Bump build number
+        # CFBundleVersion is hardcoded to "1" in project.yml, which never
+        # changes between builds — Firebase App Distribution then can't tell
+        # testers a genuinely new build is available, so devices kept
+        # running stale binaries despite every push showing green in CI.
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" Info.plist
+
       - name: Decode distribution certificate
         run: echo "${{ secrets.DIST_CERT_P12_BASE64 }}" | base64 --decode > distribution.p12
 
