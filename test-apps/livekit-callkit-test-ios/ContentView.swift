@@ -149,6 +149,14 @@ struct ContentView: View {
                         }
                     }
                 }
+
+                Section("Debug log") {
+                    ForEach(Array(callManager.debugLog.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                            .font(.caption)
+                            .monospaced()
+                    }
+                }
             }
         }
         .padding()

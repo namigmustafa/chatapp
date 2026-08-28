@@ -46,6 +46,19 @@ class CallManager: NSObject, ObservableObject {
     @Published var voipToken: String?
     @Published var activeCallUUID: UUID?
 
+    // Reports have been "nothing visibly happens" with no way to tell which
+    // step that actually means — CallKit callbacks fire on a background
+    // queue, `logger` output needs a console we don't have on-device. This
+    // is a plain on-screen trail of every step, in order, so we can see
+    // exactly where execution actually stops.
+    @Published var debugLog: [String] = []
+    func trace(_ msg: String) {
+        Task { @MainActor in
+            self.debugLog.append(msg)
+        }
+        logger.debug("\(msg)")
+    }
+
     @AppStorage("url") var url: String = ""
     @AppStorage("token") var token: String = ""
 
@@ -223,7 +236,7 @@ class CallManager: NSObject, ObservableObject {
 
     // NOTE: Using sync version for background mode compatibility
     func reportIncomingCallSync(from callerId: String, callerName: String, completion: @escaping @Sendable ((any Error)?) -> Void) {
-        logger.debug("Incoming call")
+        trace("reportIncomingCallSync: start")
 
         let callUUID = UUID()
         let callUpdate = CXCallUpdate()
@@ -231,11 +244,20 @@ class CallManager: NSObject, ObservableObject {
         callUpdate.hasVideo = false
         callUpdate.localizedCallerName = callerName
 
-        provider.reportNewIncomingCall(with: callUUID, update: callUpdate, completion: completion)
+        trace("reportIncomingCallSync: calling provider.reportNewIncomingCall")
+        provider.reportNewIncomingCall(with: callUUID, update: callUpdate) { error in
+            if let error {
+                self.trace("reportNewIncomingCall completion: FAILED \(error)")
+            } else {
+                self.trace("reportNewIncomingCall completion: OK")
+            }
+            completion(error)
+        }
 
         Task { @MainActor in
             self.callState = .activeIncoming
             self.activeCallUUID = callUUID
+            self.trace("reportIncomingCallSync: callState set to activeIncoming")
         }
     }
 }
@@ -244,10 +266,11 @@ class CallManager: NSObject, ObservableObject {
 
 extension CallManager {
     func connectToRoom() async throws {
-        // Connect to Room
+        trace("connectToRoom: connecting to \(url)")
         try await room.connect(url: url, token: token)
-        // Publish mic
+        trace("connectToRoom: room.connect OK, publishing mic")
         try await room.localParticipant.setMicrophone(enabled: true)
+        trace("connectToRoom: mic published")
     }
 
     func disconnectFromRoom() async {
@@ -259,7 +282,7 @@ extension CallManager {
 
 extension CallManager: CXProviderDelegate {
     func providerDidReset(_: CXProvider) {
-        logger.debug("Did reset")
+        trace("providerDidReset")
 
         Task { @MainActor in
             self.activeCallUUID = nil
@@ -298,12 +321,12 @@ extension CallManager: CXProviderDelegate {
     }
 
     func provider(_: CXProvider, perform action: CXAnswerCallAction) {
-        logger.debug("Answer call")
+        trace("CXAnswerCallAction: perform called")
 
         Task {
             do {
                 try await connectToRoom()
-                logger.debug("Connected to room")
+                trace("CXAnswerCallAction: connectToRoom OK, fulfilling")
 
                 Task { @MainActor in
                     self.callState = .connected
@@ -311,7 +334,7 @@ extension CallManager: CXProviderDelegate {
 
                 action.fulfill()
             } catch {
-                logger.critical("Failed to connect to room with error: \(error)")
+                trace("CXAnswerCallAction: FAILED \(error)")
 
                 Task { @MainActor in
                     self.callState = .errored(error)
@@ -355,14 +378,14 @@ extension CallManager: CXProviderDelegate {
     }
 
     func provider(_: CXProvider, didActivate session: AVAudioSession) {
-        // Audio session can now be activated.
-        logger.debug("Did activate session")
+        trace("didActivate: session activated by CallKit")
 
         do {
             try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.mixWithOthers])
             try AudioManager.shared.setEngineAvailability(.default)
+            trace("didActivate: category set, engine enabled")
         } catch {
-            logger.critical("Failed to set engine availability: \(error.localizedDescription)")
+            trace("didActivate: FAILED \(error.localizedDescription)")
         }
     }
 
