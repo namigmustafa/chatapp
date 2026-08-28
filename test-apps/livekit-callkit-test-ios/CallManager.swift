@@ -93,7 +93,13 @@ class CallManager: NSObject, ObservableObject {
         // Setup PushKit
         pushRegistry.desiredPushTypes = [.voIP]
         super.init()
-        provider.setDelegate(self, queue: .global(qos: .default))
+        // CXProvider(configuration:) kicks off an async XPC connection to
+        // callservicesd on a secondary thread as soon as it's created; if
+        // that finishes before setDelegate is called — or setDelegate runs
+        // on a background queue instead of main — CallKit can misfire
+        // providerDidReset right after a reportNewIncomingCall, before its
+        // completion ever runs. Set the delegate on main, immediately.
+        provider.setDelegate(self, queue: .main)
         pushRegistry.delegate = self
 
         // Set audio session auto-config off
