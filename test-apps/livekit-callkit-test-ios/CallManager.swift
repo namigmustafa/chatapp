@@ -149,6 +149,13 @@ class CallManager: NSObject, ObservableObject {
             // audio failure that a Swift do/catch can't catch, which is why
             // this crashed outright instead of surfacing a normal error.
             try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .voiceChat, options: [.mixWithOthers])
+            // Without this, the SwiftUI Button tap's default system haptic
+            // (which needs its own tiny audio engine) races our .playAndRecord
+            // session and crashes with a TCC/privacy abort whose message
+            // misleadingly cites NSMicrophoneUsageDescription — confirmed as
+            // a known CoreHaptics/AVAudioSession conflict, with this call as
+            // Apple's documented fix (setAllowHapticsAndSystemSoundsDuringRecording).
+            try AVAudioSession.sharedInstance().setAllowHapticsAndSystemSoundsDuringRecording(true)
             try AVAudioSession.sharedInstance().setActive(true)
 
             // The `init()` above leaves LiveKit's audio engine disabled
