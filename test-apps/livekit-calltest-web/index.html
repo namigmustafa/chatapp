@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>LiveKit Call Test (Web)</title>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; }
+  input, button { width: 100%; padding: 10px; margin: 6px 0; box-sizing: border-box; font-size: 16px; }
+  button { cursor: pointer; }
+  #status { padding: 10px; background: #eee; border-radius: 6px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+  <h2>LiveKit Call Test — Web</h2>
+
+  <!-- This device is always identity "tester3" in the fixed "calltest" room
+       — same room the iOS ("tester1") and Android ("tester2") test apps use.
+       No CallKit/native call UI equivalent here on purpose: this is purely
+       to isolate whether LiveKit itself delivers two-way audio, independent
+       of either native app's own bugs. -->
+  <input id="url" value="wss://20-16-170-193.sslip.io" />
+  <input id="token" value="eyJhbGciOiJIUzI1NiJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6ImNhbGx0ZXN0IiwiY2FuUHVibGlzaCI6dHJ1ZSwiY2FuU3Vic2NyaWJlIjp0cnVlfSwiaXNzIjoiQVBJa2V5LWJyYXZlLWZyb2ciLCJleHAiOjE3OTA1MDg0NDQsIm5iZiI6MTc4NzkxNjQ0NCwic3ViIjoidGVzdGVyMyJ9.D00Va-ruh1wv0TBkPfpPmoISCz2O2_OF21UmUFxDHYY" />
+  <button id="connectBtn">Connect</button>
+  <button id="disconnectBtn" disabled>Disconnect</button>
+  <div id="status">Idle</div>
+  <audio id="remoteAudio" autoplay></audio>
+
+<script>
+  const { Room, RoomEvent, Track } = LivekitClient;
+  const statusEl = document.getElementById('status');
+  const connectBtn = document.getElementById('connectBtn');
+  const disconnectBtn = document.getElementById('disconnectBtn');
+  const remoteAudio = document.getElementById('remoteAudio');
+
+  const log = (msg) => { statusEl.textContent += '\n' + msg; console.log(msg); };
+
+  const room = new Room();
+
+  room.on(RoomEvent.Connected, () => log('connected'));
+  room.on(RoomEvent.Disconnected, (reason) => log('disconnected: ' + reason));
+  room.on(RoomEvent.ParticipantConnected, (p) => log('participantConnected: ' + p.identity));
+  room.on(RoomEvent.ParticipantDisconnected, (p) => log('participantDisconnected: ' + p.identity));
+  room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+    log('subscribedTrack: ' + track.kind + ' from ' + participant.identity);
+    if (track.kind === Track.Kind.Audio) {
+      track.attach(remoteAudio);
+    }
+  });
+
+  connectBtn.onclick = async () => {
+    const url = document.getElementById('url').value;
+    const token = document.getElementById('token').value;
+    statusEl.textContent = 'Connecting...';
+    try {
+      await room.connect(url, token);
+      await room.localParticipant.setMicrophoneEnabled(true);
+      log('mic published — call live');
+      connectBtn.disabled = true;
+      disconnectBtn.disabled = false;
+    } catch (e) {
+      log('connect failed: ' + e.message);
+    }
+  };
+
+  disconnectBtn.onclick = async () => {
+    await room.disconnect();
+    connectBtn.disabled = false;
+    disconnectBtn.disabled = true;
+    statusEl.textContent = 'Idle';
+  };
+</script>
+</body>
+</html>
