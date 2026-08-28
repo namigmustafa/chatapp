@@ -118,12 +118,16 @@ jobs:
             --testers "namigmustafa@gmail.com" \
             --release-notes "CallKit + LiveKit isolation test build (commit ${{ github.sha }})"
 
-      # NOTE: tried `firebase-tools crashlytics:symbols:upload` here (both
-      # --generator breakpad and csym) to auto-symbolicate Crashlytics
-      # reports. Both fail with "No native libraries found" — that command
-      # appears to only handle Android/NDK-style unstripped .so directories,
-      # not Apple .dSYM.zip bundles, despite accepting the syntax. Apple's
-      # own `upload-symbols` binary (bundled inside the FirebaseCrashlytics
-      # SPM checkout) is the correct tool but its checkout path isn't stable
-      # across CI runs — reverted. Use Settings > Analytics Data on-device
-      # for crash logs instead, as before.
+      - name: Upload dSYM to Crashlytics
+        # `firebase-tools crashlytics:symbols:upload` (tried earlier, both
+        # --generator breakpad and csym) only handles Android/NDK-style
+        # unstripped .so directories, not Apple .dSYM.zip — fails with
+        # "No native libraries found" either way. This is Apple's own
+        # dedicated tool for the job, fetched directly instead of relying on
+        # the SPM package checkout path (which isn't stable across CI runs).
+        run: |
+          curl -sL -o upload-symbols https://raw.githubusercontent.com/firebase/firebase-ios-sdk/main/Crashlytics/upload-symbols
+          chmod +x upload-symbols
+          DSYM=$(find . -maxdepth 1 -name "*.dSYM.zip" | head -1)
+          echo "Uploading $DSYM"
+          ./upload-symbols -gsp GoogleService-Info.plist -p ios "$DSYM"
