@@ -117,3 +117,18 @@ jobs:
             --project chatapp-48786 \
             --testers "namigmustafa@gmail.com" \
             --release-notes "CallKit + LiveKit isolation test build (commit ${{ github.sha }})"
+
+      - name: Upload dSYM to Crashlytics
+        # Crashlytics reports crashes without this, but shows "unprocessed"
+        # until a matching dSYM is uploaded — gym (build_app) already
+        # produces one alongside the .ipa, so just hand it over.
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          DSYM=$(find . -maxdepth 1 -name "*.dSYM.zip" | head -1)
+          echo "Uploading $DSYM"
+          npx -y firebase-tools crashlytics:symbols:upload \
+            --app 1:656202089228:ios:41b36481da9ef970e23f29 \
+            "$DSYM"
