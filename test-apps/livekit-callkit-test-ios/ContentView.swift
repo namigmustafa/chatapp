@@ -137,7 +137,14 @@ struct ContentView: View {
                         }
                         Button("Simulate incoming call") {
                             Task {
-                                try await callManager.reportIncomingCallAsync(from: "user2", callerName: "Tommie Sunshine")
+                                // A bare `try await` in a Task swallows the error
+                                // silently on failure — exactly the "nothing happens"
+                                // symptom seen on tap. Surface it like startCall's error path.
+                                do {
+                                    try await callManager.reportIncomingCallAsync(from: "user2", callerName: "Tommie Sunshine")
+                                } catch {
+                                    callManager.callState = .errored(error)
+                                }
                             }
                         }
                     }
