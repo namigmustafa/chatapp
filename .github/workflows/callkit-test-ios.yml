@@ -131,4 +131,5 @@ jobs:
           echo "Uploading $DSYM"
           npx -y firebase-tools crashlytics:symbols:upload \
             --app 1:656202089228:ios:41b36481da9ef970e23f29 \
+            --generator csym \
             "$DSYM"
